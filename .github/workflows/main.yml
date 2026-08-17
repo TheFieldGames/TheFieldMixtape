@@ -2,8 +2,11 @@ name: Upload Thunderstore Package
 
 on:
   push:
-    tags:
-      - "*"
+    branches:
+      - main
+
+permissions:
+  contents: write
 
 jobs:
   publish:
@@ -11,6 +14,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bump version and push tag
+        id: tag
+        uses: anothrNick/github-tag-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEFAULT_BUMP: patch
+          TAG_PREFIX: v
 
       - name: Upload Thunderstore Package
         uses: GreenTF/upload-thunderstore-package@v4.3
@@ -21,7 +34,7 @@ jobs:
           token: ${{ secrets.TCLI_AUTH_TOKEN }}
           name: TheFieldMixtape
           description: The Field's Mixtape
-          version: 1.0.1
+          version: ${{ steps.tag.outputs.new_tag }}
           deps: onlystar-sPEAKer@2.3.6
           categories: |
             mixtapes
