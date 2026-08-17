@@ -1,0 +1,2 @@
+- name: Upload Thunderstore Package
+  uses: GreenTF/upload-thunderstore-package@v4.3
