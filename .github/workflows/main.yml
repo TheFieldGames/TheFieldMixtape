@@ -17,6 +17,7 @@ jobs:
         with:
           namespace: TheField
           community: peak
+          repo: https://thunderstore.io
           token: ${{ secrets.TCLI_AUTH_TOKEN }}
           name: TheFieldMixtape
           description: The Field's Mixtape
