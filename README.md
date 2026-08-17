@@ -1,8 +1,11 @@
 # TheFieldMixtape
 crowd sourced mixtape for The Field's PEAK Mix Tape
 
+Want to add a song? See [CONTRIBUTING.md](.github/CONTRIBUTING.md).
+
 # Tracklist
 
+<!-- TRACKLIST:START -->
 1. All Along the Watchtower - Jimmy Hendrix
 2. Bangarang (Ft. Sirah) - Skrillex
 3. Because I'm Me - The Avalanches
@@ -21,41 +24,42 @@ crowd sourced mixtape for The Field's PEAK Mix Tape
 16. Fly - Sugar Gay
 17. Freaks - Timmy Trumpet
 18. Genesis - Justice
-19. Get Up Offa That Thing - James Brown
-20. Hamster Dance
-21. Helena - My Chemical Romance
-22. Hooked on a Feeling
-23. If I Was a Folkstar - The Avalanches
-24. In Da Club - 50 Cent
-25. In Too Deep - Sum 41
+19. Get Busy - Sean Paul
+20. Get Up Offa That Thing - James Brown
+21. Hamster Dance
+22. Helena - My Chemical Romance
+23. Hooked on a Feeling
+24. If I Was a Folkstar - The Avalanches
+25. In Da Club - 50 Cent
 26. In the End - Linkin Park
-27. Jump in Line
-28. King Kunta - Kendrick Lamar
-29. LUMP - Presidents of the United States
+27. In Too Deep - Sum 41
+28. Jump in Line
+29. King Kunta - Kendrick Lamar
 30. Lifestyle - Rich Gang
 31. Little Bitty Pretty One
-32. My Own Worst Enemy - Lit
-33. Nightcall - Kavinsky
-34. Not Like Us - Kendrick Lamar
-35. Ocean Avenue - Yellowcard
-36. One More Time - Daft Punk
-37. One Week - Barenaked Ladies
-38. Pepper - Butthole Surfers
-39. Ransom - Juice Wrld
-40. Rascal King - MMBostones
-41. Sad Machine - Porter Robinson
-42. Skeleton Cartier - Popcaan
-43. Squabble Up - Kendrick Lamar
-44. Sugar, We're Goin Down - Fall Out Boy
-45. Super-Bon-Bon - Soul Coughing
-46. Tecata
-47. Teenage Dirtbag - Wheatus
-48. Three is the Magic Number - De La Soul
-49. Touch the Sky - Kanye
-50. USA
-51. Valley Ghoul - Provoker
-52. Veridis Quo - Daft Punk
-53. Wagon Wheel - Darius Rucker
-54. Woke Up - Dae Dae
-55. You Can Call me Al - Paul Simon
-56. Get Busy - Sean Paul
+32. LUMP - Presidents of the United States
+33. My Own Worst Enemy - Lit
+34. Nightcall - Kavinsky
+35. Not Like Us - Kendrick Lamar
+36. Ocean Avenue - Yellowcard
+37. One More Time - Daft Punk
+38. One Week - Barenaked Ladies
+39. Pepper - Butthole Surfers
+40. Ransom - Juice Wrld
+41. Rascal King - MMBostones
+42. Sad Machine - Porter Robinson
+43. Skeleton Cartier - Popcaan
+44. Squabble Up - Kendrick Lamar
+45. Sugar, We're Goin Down - Fall Out Boy
+46. Super-Bon-Bon - Soul Coughing
+47. Tecata
+48. Teenage Dirtbag - Wheatus
+49. Three is the Magic Number - De La Soul
+50. Touch the Sky - Kanye
+51. USA
+52. Valley Ghoul - Provoker
+53. Veridis Quo - Daft Punk
+54. Wagon Wheel - Darius Rucker
+55. Woke Up - Dae Dae
+56. You Can Call me Al - Paul Simon
+<!-- TRACKLIST:END -->

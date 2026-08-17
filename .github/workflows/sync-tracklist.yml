@@ -1,0 +1,60 @@
+name: Sync Tracklist
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "my mixtape/**"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Regenerate tracklist in README.md
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+
+          folder = "my mixtape"
+          files = sorted(
+              (f[:-4] for f in os.listdir(folder) if f.endswith(".ogg")),
+              key=str.casefold,
+          )
+          tracklist = "\n".join(f"{i}. {name}" for i, name in enumerate(files, 1))
+
+          with open("README.md", "r") as f:
+              readme = f.read()
+
+          new_block = f"<!-- TRACKLIST:START -->\n{tracklist}\n<!-- TRACKLIST:END -->"
+          readme = re.sub(
+              r"<!-- TRACKLIST:START -->.*?<!-- TRACKLIST:END -->",
+              new_block,
+              readme,
+              flags=re.DOTALL,
+          )
+
+          with open("README.md", "w") as f:
+              f.write(readme)
+          PY
+
+      - name: Commit tracklist update
+        run: |
+          if git diff --quiet -- README.md; then
+            echo "Tracklist already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "Auto-update tracklist"
+          git push origin HEAD:${{ github.head_ref }}
