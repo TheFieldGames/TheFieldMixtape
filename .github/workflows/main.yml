@@ -22,4 +22,4 @@ jobs:
           description: The Field's Mixtape
           version: 1.0.1
           deps: onlystar-sPEAKer@2.3.6
-          categories: ["mixtapes"]
+          categories: {"mixtapes"}
