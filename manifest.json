@@ -1,0 +1,10 @@
+{
+    "name": "TheFieldMixtape", 
+    "author": "The Field",
+    "version_number": "1.0.0",
+    "website_url": "",
+    "description": "The Field's Mixtape",
+    "dependencies": [
+      "onlystar-sPEAKer-2.3.6"
+    ]
+  }
