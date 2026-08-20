@@ -1,0 +1,65 @@
+<%- include('partials/header') %>
+  <h1>Add a track</h1>
+  <p class="subtitle">
+    Logged in as <strong><%= displayName %></strong>
+    &mdash;
+    <form method="POST" action="/logout" class="inline-form">
+      <button type="submit" class="link-button">log out</button>
+    </form>
+  </p>
+  <% if (usageInfo) { %>
+    <% if (usageInfo.locked) { %>
+      <p class="warning">
+        Monthly publish limit reached (<%= usageInfo.usageGB %>GB of <%= usageInfo.capGB %>GB used) &mdash;
+        real publishes are locked until next month. Dry runs still work.
+      </p>
+    <% } else { %>
+      <p class="hint">
+        <%= usageInfo.usageGB %>GB of <%= usageInfo.capGB %>GB used this month<% if (usageInfo.publishesRemaining !== null) { %>
+        &mdash; about <%= usageInfo.publishesRemaining %> more publish<%= usageInfo.publishesRemaining === 1 ? '' : 'es' %> left at the current mixtape size<% } %>.
+      </p>
+    <% } %>
+  <% } %>
+  <% if (error) { %>
+    <p class="error"><%= error %></p>
+  <% } %>
+  <form method="POST" action="/submit" enctype="multipart/form-data" id="upload-form">
+    <label>
+      Audio file
+      <input type="file" name="audio" accept="audio/*" required>
+    </label>
+    <label>
+      Song title
+      <input type="text" name="title" required>
+    </label>
+    <label>
+      Artist
+      <input type="text" name="artist" required>
+    </label>
+    <label class="checkbox-label">
+      <input type="checkbox" name="dryRun" id="dry-run-checkbox">
+      Dry run
+    </label>
+    <p class="hint">
+      Tests conversion, upload, and packaging for real, but stops before actually
+      publishing to Thunderstore &mdash; nothing goes live.
+    </p>
+    <button type="submit" id="submit-button">Add to mixtape</button>
+  </form>
+  <p id="wait-message" class="wait-message" hidden>
+    Converting, uploading, and publishing &mdash; this usually takes 1&ndash;2 minutes. Please don&rsquo;t close this page.
+  </p>
+  <script>
+    document.getElementById('upload-form').addEventListener('submit', () => {
+      const isDryRun = document.getElementById('dry-run-checkbox').checked;
+      const button = document.getElementById('submit-button');
+      button.disabled = true;
+      button.textContent = isDryRun ? 'Running dry run...' : 'Publishing...';
+      const waitMessage = document.getElementById('wait-message');
+      waitMessage.textContent = isDryRun
+        ? 'Converting, uploading, and building — this usually takes 1–2 minutes. Nothing will be published for real. Please don’t close this page.'
+        : 'Converting, uploading, and publishing — this usually takes 1–2 minutes. Please don’t close this page.';
+      waitMessage.hidden = false;
+    });
+  </script>
+<%- include('partials/footer') %>

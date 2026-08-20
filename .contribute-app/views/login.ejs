@@ -1,0 +1,18 @@
+<%- include('partials/header') %>
+  <h1>TheFieldMixtape</h1>
+  <p class="subtitle">Add a track to the mixtape</p>
+  <% if (error) { %>
+    <p class="error"><%= error %></p>
+  <% } %>
+  <form method="POST" action="/login">
+    <label>
+      Your name
+      <input type="text" name="name" required maxlength="100" autocomplete="name">
+    </label>
+    <label>
+      Mixtape Password
+      <input type="password" name="password" required autocomplete="current-password">
+    </label>
+    <button type="submit">Log in</button>
+  </form>
+<%- include('partials/footer') %>

@@ -1,0 +1,35 @@
+# Render Blueprint. dockerfilePath/dockerContext resolve from the repo root
+# (verified against Render's docs), not from rootDir — hence the
+# .contribute-app/ prefix on both, even though this file itself lives inside
+# that directory.
+services:
+  - type: web
+    name: thefieldmixtape-contribute
+    runtime: docker
+    plan: free
+    rootDir: .contribute-app
+    dockerfilePath: .contribute-app/Dockerfile
+    dockerContext: .contribute-app
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: APP_PASSWORD_HASH
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: GITHUB_PAT
+        sync: false
+      - key: GIT_REPO_URL
+        value: https://github.com/TheFieldGames/TheFieldMixtape.git
+      - key: GIT_TARGET_BRANCH
+        value: main
+      - key: TCLI_AUTH_TOKEN
+        sync: false
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        value: thefieldmixtape-audio

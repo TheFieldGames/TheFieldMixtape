@@ -1,0 +1,155 @@
+:root {
+  color-scheme: light dark;
+  --fg: #1a1a1a;
+  --bg: #fafafa;
+  --card-bg: rgb(255 255 255 / 88%);
+  --border: #d0d0d0;
+  --error: #b3261e;
+  --warning: #8a5a00;
+  --link: #2c5cc5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e8e8e8;
+    --bg: #181818;
+    --card-bg: rgb(24 24 24 / 82%);
+    --border: #3a3a3a;
+    --error: #ff8a80;
+    --warning: #ffca66;
+    --link: #7aa2ff;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  color: var(--fg);
+  background: var(--bg) url("/beach-mixtape.jpg") center center / cover no-repeat fixed;
+}
+
+/* Portrait mobile image is a different crop, not just a smaller version of
+   the desktop one — swap it in below the phone breakpoint. Also drop
+   `fixed` attachment here: mobile browsers (notably iOS Safari) handle
+   fixed backgrounds poorly/inconsistently, so `scroll` is the safer choice
+   at this width regardless of which image is showing. */
+@media (max-width: 768px) {
+  body {
+    background-image: url("/beach-mixtape-mobile.jpg");
+    background-attachment: scroll;
+  }
+}
+
+.container {
+  max-width: 480px;
+  margin: 3rem auto;
+  padding: 1.5rem 1.25rem;
+  background: var(--card-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgb(0 0 0 / 20%);
+}
+
+h1 {
+  margin-bottom: 0.25rem;
+}
+
+.subtitle {
+  color: color-mix(in srgb, var(--fg) 65%, transparent);
+  margin-top: 0;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.inline-form {
+  display: inline;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.checkbox-label {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+}
+
+.hint {
+  margin: -0.5rem 0 0;
+  font-size: 0.8rem;
+  color: color-mix(in srgb, var(--fg) 65%, transparent);
+}
+
+input[type="text"],
+input[type="password"],
+input[type="file"] {
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 1rem;
+}
+
+button[type="submit"] {
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--link);
+  color: white;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+button[type="submit"]:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--link);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: inherit;
+}
+
+.error {
+  color: var(--error);
+}
+
+.warning {
+  color: var(--warning);
+}
+
+.wait-message {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  color: color-mix(in srgb, var(--fg) 65%, transparent);
+}
+
+a {
+  color: var(--link);
+}
