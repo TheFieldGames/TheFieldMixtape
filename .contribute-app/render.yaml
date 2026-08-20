@@ -1,13 +1,13 @@
-# Render Blueprint. dockerfilePath/dockerContext resolve from the repo root
-# (verified against Render's docs), not from rootDir — hence the
-# .contribute-app/ prefix on both, even though this file itself lives inside
-# that directory.
+# Render Blueprint. dockerfilePath/dockerContext are repo-root-relative
+# paths already (confirmed live: rootDir gets PREPENDED to them, not
+# replaced by them — setting both rootDir and a .contribute-app/-prefixed
+# path double-nested into .contribute-app/.contribute-app and broke checkout).
+# So no rootDir here; dockerfilePath/dockerContext alone are sufficient.
 services:
   - type: web
     name: thefieldmixtape-contribute
     runtime: docker
     plan: free
-    rootDir: .contribute-app
     dockerfilePath: .contribute-app/Dockerfile
     dockerContext: .contribute-app
     envVars:
