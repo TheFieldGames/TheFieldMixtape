@@ -1,0 +1,33 @@
+[config]
+schemaVersion = "0.0.1"
+
+[package]
+namespace = "TheField"
+name = "TheFieldMixtape"
+versionNumber = "0.0.0"
+description = "The Field's Mixtape"
+websiteUrl = "https://thunderstore.io"
+containsNsfwContent = false
+
+[package.dependencies]
+onlystar-sPEAKer = "2.3.6"
+
+[build]
+icon = "./icon.png"
+readme = "./README.md"
+outdir = "./build"
+
+[[build.copy]]
+source = "./my mixtape"
+target = "my mixtape"
+
+[[build.copy]]
+source = "./sPEAKer.json"
+target = "sPEAKer.json"
+
+[publish]
+repository = "https://thunderstore.io"
+communities = ["peak"]
+
+[publish.categories]
+peak = ["mixtapes"]
