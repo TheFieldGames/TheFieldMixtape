@@ -5,7 +5,7 @@
 # So no rootDir here; dockerfilePath/dockerContext alone are sufficient.
 services:
   - type: web
-    name: thefieldmixtape-contribute
+    name: thefieldmixtape
     runtime: docker
     plan: free
     dockerfilePath: .contribute-app/Dockerfile
