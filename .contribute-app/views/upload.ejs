@@ -7,25 +7,23 @@
       <button type="submit" class="link-button">log out</button>
     </form>
   </p>
-  <p class="hint">
-    <a href="<%= thunderstoreUrl %>" target="_blank" rel="noopener">View the current mixtape on Thunderstore</a>
-  </p>
-  <p class="hint">
-    The mixtape holds up to <%= maxTracks %> tracks, and each converted track must be under <%= maxTrackFileSizeKb %>KB.
-  </p>
-  <% if (usageInfo) { %>
-    <% if (usageInfo.locked) { %>
-      <p class="warning">
-        Monthly publish limit reached (<%= usageInfo.usageGB %>GB of <%= usageInfo.capGB %>GB used) &mdash;
-        real publishes are locked until next month. Dry runs still work.
-      </p>
-    <% } else { %>
-      <p class="hint">
-        <%= usageInfo.usageGB %>GB of <%= usageInfo.capGB %>GB used this month<% if (usageInfo.publishesRemaining !== null) { %>
-        &mdash; about <%= usageInfo.publishesRemaining %> more publish<%= usageInfo.publishesRemaining === 1 ? '' : 'es' %> left at the current mixtape size<% } %>.
-      </p>
+  <div class="info-panel">
+    <p><a href="<%= thunderstoreUrl %>" target="_blank" rel="noopener">View the current mixtape on Thunderstore</a></p>
+    <p>Up to <%= maxTracks %> tracks total, each under <%= maxTrackFileSizeKb %>KB once converted.</p>
+    <% if (usageInfo) { %>
+      <% if (usageInfo.locked) { %>
+        <p class="warning">
+          Monthly publish limit reached (<%= usageInfo.usageGB %>GB of <%= usageInfo.capGB %>GB used) &mdash;
+          real publishes are locked until next month. Dry runs still work.
+        </p>
+      <% } else { %>
+        <p>
+          <%= usageInfo.usageGB %>GB of <%= usageInfo.capGB %>GB used this month<% if (usageInfo.publishesRemaining !== null) { %>
+          &mdash; about <%= usageInfo.publishesRemaining %> more publish<%= usageInfo.publishesRemaining === 1 ? '' : 'es' %> left at the current mixtape size<% } %>.
+        </p>
+      <% } %>
     <% } %>
-  <% } %>
+  </div>
   <% if (error) { %>
     <p class="error"><%= error %></p>
   <% } %>
