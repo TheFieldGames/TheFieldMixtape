@@ -4,7 +4,13 @@ import os from "node:os";
 
 import { requireAuth, sanitizeDisplayName } from "../src/auth.js";
 import { runExclusive } from "../src/queue.js";
-import { processSubmission, SubmissionError } from "../src/publish.js";
+import {
+  processSubmission,
+  SubmissionError,
+  THUNDERSTORE_URL,
+  MAX_TRACKS,
+  MAX_TRACK_FILE_SIZE_KB,
+} from "../src/publish.js";
 import * as storage from "../src/storage.js";
 import * as bandwidth from "../src/bandwidth.js";
 import { log, logError } from "../src/logger.js";
@@ -41,7 +47,14 @@ export function createIndexRouter(config) {
       logError("Failed to load bandwidth usage for the indicator (non-fatal):", err.message);
     }
 
-    res.render("upload", { displayName, error: null, usageInfo });
+    res.render("upload", {
+      displayName,
+      error: null,
+      usageInfo,
+      thunderstoreUrl: THUNDERSTORE_URL,
+      maxTracks: MAX_TRACKS,
+      maxTrackFileSizeKb: MAX_TRACK_FILE_SIZE_KB,
+    });
   });
 
   router.post("/submit", requireAuth, upload.single("audio"), async (req, res, next) => {
@@ -49,15 +62,27 @@ export function createIndexRouter(config) {
     const { title, artist } = req.body ?? {};
     const dryRun = req.body?.dryRun === "on";
 
+    const staticLocals = {
+      thunderstoreUrl: THUNDERSTORE_URL,
+      maxTracks: MAX_TRACKS,
+      maxTrackFileSizeKb: MAX_TRACK_FILE_SIZE_KB,
+    };
+
     if (!req.file) {
-      return res
-        .status(400)
-        .render("upload", { displayName, error: "Please choose an audio file to upload.", usageInfo: null });
+      return res.status(400).render("upload", {
+        displayName,
+        error: "Please choose an audio file to upload.",
+        usageInfo: null,
+        ...staticLocals,
+      });
     }
     if (!title?.trim() || !artist?.trim()) {
-      return res
-        .status(400)
-        .render("upload", { displayName, error: "Title and artist are both required.", usageInfo: null });
+      return res.status(400).render("upload", {
+        displayName,
+        error: "Title and artist are both required.",
+        usageInfo: null,
+        ...staticLocals,
+      });
     }
 
     try {

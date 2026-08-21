@@ -7,6 +7,12 @@
       <button type="submit" class="link-button">log out</button>
     </form>
   </p>
+  <p class="hint">
+    <a href="<%= thunderstoreUrl %>" target="_blank" rel="noopener">View the current mixtape on Thunderstore</a>
+  </p>
+  <p class="hint">
+    The mixtape holds up to <%= maxTracks %> tracks, and each converted track must be under <%= maxTrackFileSizeKb %>KB.
+  </p>
   <% if (usageInfo) { %>
     <% if (usageInfo.locked) { %>
       <p class="warning">
