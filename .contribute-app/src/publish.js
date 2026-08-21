@@ -144,6 +144,23 @@ export async function processSubmission(input, config, deps = {}) {
   );
 
   try {
+    // A real (non-dry-run) publish is only ever safe when this instance is
+    // actually configured to push to `main`. GIT_TARGET_BRANCH controls
+    // *only* where the git commit/tag land — it has never gated whether
+    // `tcli publish` runs. An instance left pointed at a disposable test
+    // branch (e.g. local dev) would otherwise publish for real while its
+    // commit silently landed somewhere main never sees — exactly what
+    // happened with "F.O.M.O. - Your Neighbors" (see MixTapeWebPlan.md).
+    // Dry runs are exempt: they never call tcli publish, so they're safe
+    // against any branch, which is the whole point of using one for testing.
+    if (!dryRun && branch !== SOURCE_BRANCH) {
+      setStage("check-target-branch");
+      throw new SubmissionError(
+        `Refusing to publish for real: this instance is configured to push to "${branch}", not "${SOURCE_BRANCH}". Real publishes are only allowed when targeting ${SOURCE_BRANCH}. Use a dry run to keep testing, or fix this instance's GIT_TARGET_BRANCH.`,
+        { stage: "check-target-branch" }
+      );
+    }
+
     // Locks out real submissions once this month's tracked publish
     // bandwidth hits the safety threshold — before any clone/convert work.
     // Dry runs are exempt: they never call tcli publish, so they never

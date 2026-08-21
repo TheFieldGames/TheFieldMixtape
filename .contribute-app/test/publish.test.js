@@ -619,6 +619,11 @@ test("real submissions: real prefix, real branch, no force-push, both buildPacka
 // plan's own verification guidance) — cloning from it directly failed with
 // "Remote branch ... not found" on first use. Fix: always clone from
 // SOURCE_BRANCH ("main"), independent of where the result gets pushed.
+//
+// Exercised via a dry run: a *real* submission with a non-main config.branch
+// is now refused outright before it ever clones (see the target-branch guard
+// tests below), so the only submission this scenario can still legitimately
+// happen through is a dry run.
 test("clone always uses SOURCE_BRANCH ('main'), never config.branch — even when config.branch doesn't exist yet on the remote", async (t) => {
   const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "publish-test-clone-source-"));
   t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
@@ -636,16 +641,17 @@ test("clone always uses SOURCE_BRANCH ('main'), never config.branch — even whe
 
   const testBranchConfig = { ...BASE_CONFIG, branch: "contribute-app-test-does-not-exist-yet" };
 
-  await processSubmission({ uploadPath, title: "T", artist: "A", displayName: "Alex" }, testBranchConfig, {
-    ...deps,
-    tmpBase: tmpDir,
-  });
+  await processSubmission(
+    { uploadPath, title: "T", artist: "A", displayName: "Alex", dryRun: true },
+    testBranchConfig,
+    { ...deps, tmpBase: tmpDir }
+  );
 
   assert.equal(clonedBranch, SOURCE_BRANCH);
   assert.equal(clonedBranch, "main");
 });
 
-test("pushing to a non-main config.branch (local test-branch scenario) force-pushes, since clone always starts fresh from main", async (t) => {
+test("dry run pushing while config.branch is a non-main test branch still force-pushes to DRY_RUN_BRANCH, since clone always starts fresh from main", async (t) => {
   const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "publish-test-testbranch-force-"));
   t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
   const uploadPath = await makeUploadFile(tmpDir);
@@ -663,13 +669,67 @@ test("pushing to a non-main config.branch (local test-branch scenario) force-pus
 
   const testBranchConfig = { ...BASE_CONFIG, branch: "contribute-app-test" };
 
-  await processSubmission({ uploadPath, title: "T", artist: "A", displayName: "Alex" }, testBranchConfig, {
-    ...deps,
-    tmpBase: tmpDir,
-  });
+  await processSubmission(
+    { uploadPath, title: "T", artist: "A", displayName: "Alex", dryRun: true },
+    testBranchConfig,
+    { ...deps, tmpBase: tmpDir }
+  );
 
-  assert.deepEqual(pushCalls[0], ["pushBranch", "contribute-app-test", { force: true }]);
+  assert.deepEqual(pushCalls[0], ["pushBranch", DRY_RUN_BRANCH, { force: true }]);
   assert.equal(pushCalls[1][2].force, true);
+});
+
+// --- Guard: a real (non-dry-run) publish is refused unless config.branch
+// is SOURCE_BRANCH ('main'). GIT_TARGET_BRANCH only ever controlled where a
+// commit/tag landed, never whether tcli publish ran — an instance left
+// pointed at a disposable test branch could previously publish for real
+// while its commit silently landed off of main. This is exactly what
+// happened with "F.O.M.O. - Your Neighbors" (see MixTapeWebPlan.md's
+// "Incident: real publish landed on the wrong git branch"). ---
+
+test("real submission refuses to run when config.branch is not 'main', before any clone/convert/publish work happens", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "publish-test-branch-guard-"));
+  t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
+  const uploadPath = await makeUploadFile(tmpDir);
+  const { calls, deps } = makeFakeDeps();
+
+  const testBranchConfig = { ...BASE_CONFIG, branch: "contribute-app-test" };
+
+  await assert.rejects(
+    () =>
+      processSubmission({ uploadPath, title: "T", artist: "A", displayName: "Alex" }, testBranchConfig, {
+        ...deps,
+        tmpBase: tmpDir,
+      }),
+    (err) => {
+      assert.ok(err instanceof SubmissionError);
+      assert.equal(err.stage, "check-target-branch");
+      assert.equal(err.committedButNotPublished, false);
+      assert.match(err.message, /contribute-app-test/);
+      assert.match(err.message, /main/);
+      return true;
+    }
+  );
+
+  assert.deepEqual(calls, [], "no clone, convert, upload, or publish work should have started");
+});
+
+test("dry run still runs normally even when config.branch is not 'main' — the guard only applies to real publishes", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "publish-test-branch-guard-dryrun-"));
+  t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
+  const uploadPath = await makeUploadFile(tmpDir);
+  const { deps } = makeFakeDeps();
+
+  const testBranchConfig = { ...BASE_CONFIG, branch: "contribute-app-test" };
+
+  const result = await processSubmission(
+    { uploadPath, title: "T", artist: "A", displayName: "Alex", dryRun: true },
+    testBranchConfig,
+    { ...deps, tmpBase: tmpDir }
+  );
+
+  assert.equal(result.dryRun, true);
+  assert.equal(result.branch, DRY_RUN_BRANCH);
 });
 
 test("real production submission (config.branch === 'main') still never force-pushes", async (t) => {
