@@ -5,8 +5,11 @@ import {
   PutObjectCommand,
   HeadObjectCommand,
 } from "@aws-sdk/client-s3";
+import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 // Verified against the real bucket during pre-flight: objects were uploaded
 // via Cloudflare's dashboard folder-upload, which preserved the "my mixtape/"
@@ -102,17 +105,17 @@ export async function uploadTrack(client, bucket, filename, filePath, { prefix =
   );
 }
 
-async function streamToBuffer(stream) {
-  const chunks = [];
-  for await (const chunk of stream) chunks.push(chunk);
-  return Buffer.concat(chunks);
-}
-
 /**
  * Downloads the complete current track library into destDir, in parallel
  * (measured ~5x faster than sequential during pre-flight — 3.9s vs 18.9s
  * for the real 57-track/212MB bucket). Used right before tcli build/publish
  * so the build step has every track on disk, not just the newly-added one.
+ *
+ * Streams each object straight to disk rather than buffering the whole file
+ * in memory first — found necessary after a real submission on Render's
+ * free tier (very little RAM) exceeded the instance's memory limit here,
+ * with all 59 tracks' full bytes resident in memory at once (parallel)
+ * right before tcli also needed memory to zip that same data.
  */
 export async function downloadAllTracks(client, bucket, destDir) {
   const keys = await listTrackKeys(client, bucket);
@@ -120,8 +123,7 @@ export async function downloadAllTracks(client, bucket, destDir) {
   await Promise.all(
     keys.map(async (key) => {
       const resp = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-      const buffer = await streamToBuffer(resp.Body);
-      await fsp.writeFile(path.join(destDir, path.basename(key)), buffer);
+      await pipeline(Readable.from(resp.Body), fs.createWriteStream(path.join(destDir, path.basename(key))));
     })
   );
   return keys.length;

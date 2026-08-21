@@ -27,12 +27,12 @@ test("regenerateReadme is a no-op (byte-identical) when given the exact same tra
 test("regenerateReadme inserts a new track in correct sorted position and renumbers everything after it", () => {
   const readmeText = fs.readFileSync(REAL_README_PATH, "utf8");
   const currentTracks = extractTrackNamesFromReadme(readmeText);
-  assert.equal(currentTracks.length, 57, "sanity check on the real README's current track count");
+  assert.ok(currentTracks.length > 0, "sanity check that parsing found real tracks");
 
   const withNewTrack = regenerateReadme(readmeText, [...currentTracks, "Bohemian Rhapsody - Queen"]);
   const newTracks = extractTrackNamesFromReadme(withNewTrack);
 
-  assert.equal(newTracks.length, 58);
+  assert.equal(newTracks.length, currentTracks.length + 1);
   // "Bohemian..." sorts case-insensitively right after "Bangarang..." (both start with B, "Bo" > "Ba")
   // and before "Break Stuff" ("Bo" < "Br") — verify it landed in the right slot, not just appended.
   const idx = newTracks.indexOf("Bohemian Rhapsody - Queen");
