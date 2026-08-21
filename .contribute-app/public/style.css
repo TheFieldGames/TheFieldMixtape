@@ -30,19 +30,40 @@ body {
   min-height: 100vh;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   color: var(--fg);
-  background: var(--bg) url("/beach-mixtape.jpg") center center / cover no-repeat fixed;
+  background: var(--bg);
+}
+
+/* A dedicated fixed-position layer for the background image, rather than
+   `background` directly on body. Two reasons: (1) position:fixed means the
+   image never has to repaint on scroll, sidestepping the classic iOS Safari
+   `background-attachment: fixed` bug without a mobile-only workaround; (2)
+   giving it a stable view-transition-name lets the browser recognize it as
+   the SAME element across a full-page navigation (this app is a classic
+   multi-page app — every route is a real page load) instead of swapping in
+   a fresh image each time, which is what removes the reload flash between
+   e.g. /login and /. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: url("/beach-mixtape.jpg") center center / cover no-repeat;
+  view-transition-name: page-background;
 }
 
 /* Portrait mobile image is a different crop, not just a smaller version of
-   the desktop one — swap it in below the phone breakpoint. Also drop
-   `fixed` attachment here: mobile browsers (notably iOS Safari) handle
-   fixed backgrounds poorly/inconsistently, so `scroll` is the safer choice
-   at this width regardless of which image is showing. */
+   the desktop one — swap it in below the phone breakpoint. */
 @media (max-width: 768px) {
-  body {
+  body::before {
     background-image: url("/beach-mixtape-mobile.jpg");
-    background-attachment: scroll;
   }
+}
+
+/* Opts every same-origin navigation into the View Transitions API (Chrome
+   126+, Safari 18.2+ — ~85% global coverage per caniuse; Firefox falls back
+   to a plain hard navigation, not a regression, just no smoothing there). */
+@view-transition {
+  navigation: auto;
 }
 
 .container {
