@@ -13,6 +13,7 @@ import { fetchNextVersion as fetchNextVersionDefault } from "./version.js";
 import { publishPackage as publishPackageDefault, buildPackage as buildPackageDefault } from "./tcli.js";
 import { log as logDefault, logError as logErrorDefault } from "./logger.js";
 import * as bandwidthDefault from "./bandwidth.js";
+import * as manifestDefault from "./manifest.js";
 
 export const THUNDERSTORE_URL = "https://thunderstore.io/c/peak/p/TheField/TheFieldMixtape/";
 
@@ -58,13 +59,26 @@ export const MAX_TRACK_FILE_SIZE_KB = 8000;
 export const MAX_TRACK_FILE_SIZE_BYTES = MAX_TRACK_FILE_SIZE_KB * 1024;
 
 export class SubmissionError extends Error {
-  constructor(message, { stage, committedButNotPublished = false } = {}) {
+  constructor(message, { stage, committedButNotPublished = false, cancelled = false } = {}) {
     super(message);
     this.name = "SubmissionError";
     this.stage = stage;
     this.committedButNotPublished = committedButNotPublished;
+    this.cancelled = cancelled;
   }
 }
+
+// Cancellation is only ever checked (and only ever takes effect) for stages
+// BEFORE this one. Matches jobs.js's own CANCEL_CUTOFF_STAGE and, more
+// importantly, matches the point where processSubmission/processDeletion's
+// own inner try block begins treating a failure as committedButNotPublished
+// rather than a clean abort — once git has actually been pushed, "cancel"
+// stops being a safe, well-defined action (see the loading-bar design
+// discussion in MixTapeWebPlan.md for the full reasoning: a real
+// tcli-publish is a single irreversible network call, and killing it mid-
+// flight risks reporting "cancelled" while Thunderstore actually went
+// live — worse than an honest failure).
+export const CANCEL_CUTOFF_STAGE = "push-branch";
 
 /**
  * Core orchestration for a single track submission: clone -> duplicate
@@ -98,9 +112,12 @@ export async function processSubmission(input, config, deps = {}) {
     publishPackage = publishPackageDefault,
     buildPackage = buildPackageDefault,
     bandwidth = bandwidthDefault,
+    manifest = manifestDefault,
     tmpBase = os.tmpdir(),
     log = logDefault,
     logError = logErrorDefault,
+    checkCancelled = () => false,
+    onStageChange = () => {},
   } = deps;
 
   const { uploadPath, title, artist, displayName, dryRun = false } = input;
@@ -134,9 +151,25 @@ export async function processSubmission(input, config, deps = {}) {
   const forcePush = pushBranchName !== SOURCE_BRANCH;
 
   let stage = "start";
+  // Flips false the moment we reach CANCEL_CUTOFF_STAGE — see that
+  // constant's comment for why cancellation stops being checked (and stops
+  // being safe) from that point on.
+  let cancellable = true;
   const setStage = (name) => {
+    // "cleanup" always runs unconditionally, win or lose — never subject to
+    // cancellation itself (that would throw a second time from inside the
+    // finally block below, masking whatever actually happened and skipping
+    // the temp-file cleanup entirely).
+    if (name !== "cleanup" && cancellable && checkCancelled()) {
+      throw new SubmissionError(`Cancelled by user during stage "${stage}", before "${name}" started.`, {
+        stage,
+        cancelled: true,
+      });
+    }
     stage = name;
     log(`${jobTag} ${name}... (+${elapsed()})`);
+    onStageChange(name);
+    if (name === CANCEL_CUTOFF_STAGE) cancellable = false;
   };
 
   log(
@@ -303,6 +336,15 @@ export async function processSubmission(input, config, deps = {}) {
         await publishPackage({ configPath, filePath: zipPath, tcliPath });
         published = true;
 
+        // Records who added this track and when, in the R2-backed
+        // manifest.json — same read-modify-write pattern as bandwidth
+        // tracking below, safe under the same runExclusive mutex. A failure
+        // here falls into the same "published but bookkeeping failed" case
+        // handled by the catch block's `if (published)` branch, never
+        // reported as committedButNotPublished.
+        setStage("record-manifest");
+        await manifest.recordTrackAdded(r2Client, r2Bucket, filename, displayName);
+
         // The publish itself already fully succeeded and is irreversible —
         // a failure here must never be reported as "not published" (that
         // would risk a well-meaning retry causing a second, real publish).
@@ -320,11 +362,12 @@ export async function processSubmission(input, config, deps = {}) {
       }
     } catch (err) {
       if (published) {
-        // Real publish succeeded; only the post-publish bookkeeping failed.
-        // Not a SubmissionError with committedButNotPublished — that flag
-        // specifically means "safe/needs to be retried," which this isn't.
+        // Real publish succeeded; only post-publish bookkeeping failed
+        // (manifest and/or bandwidth recording). Not a SubmissionError with
+        // committedButNotPublished — that flag specifically means
+        // "safe/needs to be retried," which this isn't.
         logError(
-          `${jobTag} published successfully but failed to record bandwidth usage afterward (tracking may now undercount reality): ${err.message}`
+          `${jobTag} published successfully but failed to record it during stage "${stage}" (bookkeeping may now be incomplete): ${err.message}`
         );
         // Fall through to the normal success return below — from the
         // submitter's perspective from here, this is not a failure.
@@ -358,5 +401,237 @@ export async function processSubmission(input, config, deps = {}) {
     await fsp.rm(cloneDir, { recursive: true, force: true }).catch(() => {});
     await fsp.rm(convertedPath, { force: true }).catch(() => {});
     await fsp.rm(uploadPath, { force: true }).catch(() => {});
+  }
+}
+
+/**
+ * Core orchestration for removing a single track: clone -> delete from R2 ->
+ * regenerate README (from the post-delete R2 listing) -> commit -> compute+
+ * tag version -> push branch -> push tag -> download remaining library from
+ * R2 -> tcli publish. Deliberately mirrors processSubmission's shape and
+ * guards (target-branch check, bandwidth lock, dry-run isolation,
+ * committedButNotPublished semantics) rather than sharing code with it —
+ * this is the one function on the whole app that can make a live track
+ * disappear, so it's kept self-contained and independently readable/testable
+ * rather than threaded through add's control flow via shared parameters.
+ *
+ * Real deletion happens early (right after clone, before the branch/tag/
+ * build/publish critical section) — same position as processSubmission's
+ * R2 upload — so a later failure lands in the same "committed but not
+ * published" partial-failure category as add's, recoverable the same way
+ * (see MixTapeWebPlan.md's "Auto-Deploy killed the first real submission"
+ * incident for the precedent: a maintainer can always finish a stuck
+ * publish manually via storage.js/tcli.js directly). Because Thunderstore
+ * versions are immutable already-built zips, deleting the R2 source object
+ * never retroactively breaks an already-published version — it only means
+ * the *next* build won't include it.
+ *
+ * A dry run never touches the real R2 object: the track is excluded from
+ * the README/build preview in-memory instead, keeping full parity with how
+ * processSubmission's dry run never touches `main`.
+ */
+export async function processDeletion(input, config, deps = {}) {
+  const {
+    storage = storageDefault,
+    git = gitDefault,
+    fetchNextVersion = fetchNextVersionDefault,
+    publishPackage = publishPackageDefault,
+    buildPackage = buildPackageDefault,
+    bandwidth = bandwidthDefault,
+    manifest = manifestDefault,
+    tmpBase = os.tmpdir(),
+    log = logDefault,
+    logError = logErrorDefault,
+    checkCancelled = () => false,
+    onStageChange = () => {},
+  } = deps;
+
+  const { filename, displayName, dryRun = false } = input;
+  const {
+    repoUrl,
+    branch,
+    r2Client,
+    r2Bucket,
+    tcliPath,
+    thunderstoreTomlRelPath = "thunderstore.toml",
+    trackBandwidth = true,
+  } = config;
+
+  const trackName = filename.endsWith(".ogg") ? filename.slice(0, -".ogg".length) : filename;
+  const jobId = crypto.randomUUID();
+  const jobTag = `[deletion ${jobId.slice(0, 8)}]`;
+  const startedAt = Date.now();
+  const elapsed = () => `${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
+
+  const cloneDir = path.join(tmpBase, `contribute-delete-clone-${jobId}`);
+
+  const pushBranchName = dryRun ? DRY_RUN_BRANCH : branch;
+  const forcePush = pushBranchName !== SOURCE_BRANCH;
+
+  let stage = "start";
+  let cancellable = true;
+  const setStage = (name) => {
+    if (name !== "cleanup" && cancellable && checkCancelled()) {
+      throw new SubmissionError(`Cancelled by user during stage "${stage}", before "${name}" started.`, {
+        stage,
+        cancelled: true,
+      });
+    }
+    stage = name;
+    log(`${jobTag} ${name}... (+${elapsed()})`);
+    onStageChange(name);
+    if (name === CANCEL_CUTOFF_STAGE) cancellable = false;
+  };
+
+  log(
+    `${jobTag} started: remove "${trackName}" requested by ${displayName}${dryRun ? " [DRY RUN]" : ""} -> target branch "${pushBranchName}"`
+  );
+
+  try {
+    // Same reasoning as processSubmission's identical guard — see its
+    // comment for the full incident this closes.
+    if (!dryRun && branch !== SOURCE_BRANCH) {
+      setStage("check-target-branch");
+      throw new SubmissionError(
+        `Refusing to publish for real: this instance is configured to push to "${branch}", not "${SOURCE_BRANCH}". Real publishes are only allowed when targeting ${SOURCE_BRANCH}. Use a dry run to keep testing, or fix this instance's GIT_TARGET_BRANCH.`,
+        { stage: "check-target-branch" }
+      );
+    }
+
+    // A deletion still triggers a real tcli publish (the whole package gets
+    // re-uploaded, minus one track), so it consumes the same monthly
+    // bandwidth budget as an add — same lock, same reasoning.
+    if (!dryRun && trackBandwidth) {
+      setStage("check-bandwidth-lock");
+      const usage = await bandwidth.getUsage(r2Client, r2Bucket);
+      if (bandwidth.isLocked(usage)) {
+        throw new SubmissionError(
+          `Monthly publish limit reached (${(usage.bytesUsed / 1e9).toFixed(2)}GB of ${(bandwidth.LOCK_THRESHOLD_BYTES / 1e9).toFixed(1)}GB used this month). Try again next month, or use a dry run to keep testing.`,
+          { stage }
+        );
+      }
+    }
+
+    // Fail clearly and cheaply (before clone) if there's nothing to delete,
+    // rather than a confusing downstream error.
+    setStage("check-exists");
+    if (!(await storage.trackExists(r2Client, r2Bucket, filename))) {
+      throw new SubmissionError(`No track named "${filename}" exists.`, { stage });
+    }
+
+    setStage("clone");
+    await git.cloneRepo(repoUrl, SOURCE_BRANCH, cloneDir);
+
+    // Real deletion happens here, before the critical section below — see
+    // the function doc comment for why this positioning is safe. A dry run
+    // never calls this at all.
+    if (!dryRun) {
+      setStage("delete-from-r2");
+      await storage.deleteTrack(r2Client, r2Bucket, filename);
+    }
+
+    setStage("regenerate-readme");
+    const realTrackNames = await storage.listTracks(r2Client, r2Bucket);
+    // Real deletions already removed the track from R2 above, so
+    // listTracks() naturally excludes it. Dry runs never touched R2, so the
+    // track is filtered out here in-memory instead, purely for an accurate
+    // preview.
+    const trackNames = dryRun ? realTrackNames.filter((name) => name !== trackName) : realTrackNames;
+    const readmePath = path.join(cloneDir, "README.md");
+    const readmeText = await fsp.readFile(readmePath, "utf8");
+    await fsp.writeFile(readmePath, regenerateReadme(readmeText, trackNames));
+
+    setStage("commit");
+    const commitMessage = dryRun
+      ? `[DRY RUN] Remove track: ${trackName} (requested by ${displayName} via contribute-app)`
+      : `Remove track: ${trackName} (requested by ${displayName} via contribute-app)`;
+    await git.addAndCommit(cloneDir, ["README.md"], { authorName: displayName, message: commitMessage });
+
+    setStage("compute-version");
+    const { versionNumber, tagName: realTagName } = await fetchNextVersion(repoUrl);
+    const tagName = dryRun ? `${DRY_RUN_TAG_PREFIX}${realTagName}` : realTagName;
+    log(`${jobTag} computed next version: ${versionNumber} (tag: ${tagName})`);
+    await git.tagCommit(cloneDir, tagName);
+
+    let pushedBranch = false;
+    let published = false;
+    try {
+      setStage("push-branch");
+      await git.pushBranch(cloneDir, pushBranchName, { force: forcePush });
+      pushedBranch = true;
+
+      setStage("push-tag");
+      await git.pushTag(cloneDir, tagName, { force: forcePush });
+
+      setStage("download-all-tracks");
+      const mixtapeDir = path.join(cloneDir, "my mixtape");
+      const downloadedCount = await storage.downloadAllTracks(r2Client, r2Bucket, mixtapeDir);
+      log(`${jobTag} downloaded ${downloadedCount} remaining tracks from R2 for the build`);
+      if (dryRun) {
+        // The dry run never deleted the real R2 object, so
+        // downloadAllTracks() just pulled it down along with everything
+        // else — remove the local copy so the build preview accurately
+        // reflects what the package would look like without it.
+        await fsp.rm(path.join(mixtapeDir, filename), { force: true });
+      }
+
+      const configPath = path.join(cloneDir, thunderstoreTomlRelPath);
+      setStage("tcli-build");
+      await buildPackage({ configPath, versionNumber, tcliPath });
+      const zipPath = buildOutputZipPath(cloneDir, versionNumber);
+      const zipStat = await fsp.stat(zipPath);
+      log(`${jobTag} built package: ${(zipStat.size / 1024 / 1024).toFixed(1)}MB`);
+
+      if (!dryRun) {
+        setStage("tcli-publish");
+        await publishPackage({ configPath, filePath: zipPath, tcliPath });
+        published = true;
+
+        setStage("record-manifest");
+        await manifest.removeTrack(r2Client, r2Bucket, filename);
+
+        if (trackBandwidth) {
+          setStage("record-bandwidth");
+          const updatedUsage = await bandwidth.recordPublish(r2Client, r2Bucket, zipStat.size);
+          log(
+            `${jobTag} recorded ${(zipStat.size / 1e9).toFixed(3)}GB against this month's budget (now ${(updatedUsage.bytesUsed / 1e9).toFixed(2)}GB of ${(bandwidth.LOCK_THRESHOLD_BYTES / 1e9).toFixed(1)}GB)`
+          );
+        } else {
+          log(`${jobTag} bandwidth tracking disabled for this instance — not recorded`);
+        }
+      }
+    } catch (err) {
+      if (published) {
+        logError(
+          `${jobTag} published successfully but failed to record it during stage "${stage}" (bookkeeping may now be incomplete): ${err.message}`
+        );
+      } else {
+        throw new SubmissionError(
+          pushedBranch
+            ? `Removal committed to ${pushBranchName} but ${dryRun ? "the dry-run build" : "publishing"} failed: ${err.message}`
+            : `${dryRun ? "Dry run" : "Publishing"} failed before the commit was pushed: ${err.message}`,
+          { stage, committedButNotPublished: !dryRun && pushedBranch }
+        );
+      }
+    }
+
+    const commitSha = await git.getHeadSha(cloneDir);
+    log(`${jobTag} succeeded in ${elapsed()} (commit ${commitSha.slice(0, 8)}, version ${versionNumber})`);
+    return {
+      dryRun,
+      filename,
+      trackName,
+      versionNumber,
+      tagName,
+      commitSha,
+      branch: pushBranchName,
+      thunderstoreUrl: THUNDERSTORE_URL,
+    };
+  } catch (err) {
+    logError(`${jobTag} FAILED at stage "${stage}" after ${elapsed()}:`, err.message);
+    throw err;
+  } finally {
+    setStage("cleanup");
+    await fsp.rm(cloneDir, { recursive: true, force: true }).catch(() => {});
   }
 }

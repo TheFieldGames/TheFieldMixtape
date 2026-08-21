@@ -13,6 +13,7 @@ import {
   listTracks,
   trackExists,
   uploadTrack,
+  deleteTrack,
   downloadAllTracks,
   getTotalTrackBytes,
 } from "../src/storage.js";
@@ -176,6 +177,36 @@ test("uploadTrack respects a dry-run prefix override, keeping it out of the real
   await uploadTrack(fakeClient, "test-bucket", "Test Track - Someone.ogg", filePath, { prefix: DRY_RUN_PREFIX });
 
   assert.equal(sentCommand.input.Key, "dry-run/Test Track - Someone.ogg");
+});
+
+test("deleteTrack sends a DeleteObjectCommand for the my mixtape/ prefixed key", async () => {
+  let sentCommand = null;
+  const fakeClient = {
+    async send(command) {
+      sentCommand = command;
+      return {};
+    },
+  };
+
+  await deleteTrack(fakeClient, "test-bucket", "Old Track - Someone.ogg");
+
+  assert.equal(sentCommand.constructor.name, "DeleteObjectCommand");
+  assert.equal(sentCommand.input.Bucket, "test-bucket");
+  assert.equal(sentCommand.input.Key, "my mixtape/Old Track - Someone.ogg");
+});
+
+test("deleteTrack respects a dry-run prefix override, keeping it out of the real track namespace", async () => {
+  let sentCommand = null;
+  const fakeClient = {
+    async send(command) {
+      sentCommand = command;
+      return {};
+    },
+  };
+
+  await deleteTrack(fakeClient, "test-bucket", "Old Track - Someone.ogg", { prefix: DRY_RUN_PREFIX });
+
+  assert.equal(sentCommand.input.Key, "dry-run/Old Track - Someone.ogg");
 });
 
 test("downloadAllTracks writes every listed key's content to destDir under its basename, in parallel", async (t) => {

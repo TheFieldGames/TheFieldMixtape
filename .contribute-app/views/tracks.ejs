@@ -1,0 +1,85 @@
+<%- include('partials/header', { containerModifier: 'container-wide' }) %>
+  <h1>Tracks</h1>
+  <p class="subtitle">
+    <a href="/">Add a track</a>
+    &mdash;
+    <form method="POST" action="/logout" class="inline-form">
+      <button type="submit" class="link-button">log out</button>
+    </form>
+  </p>
+  <% if (error) { %>
+    <p class="error"><%= error %></p>
+  <% } else { %>
+    <% if (isAdmin) { %>
+      <label class="checkbox-label">
+        <input type="checkbox" id="global-dry-run">
+        Dry run deletions (test only &mdash; nothing is actually removed)
+      </label>
+    <% } %>
+    <div class="table-scroll">
+      <table class="track-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Track</th>
+            <th>Added by</th>
+            <th>Added</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% rows.forEach((row, i) => { %>
+            <tr>
+              <td><%= i + 1 %></td>
+              <td><%= row.trackName %></td>
+              <td class="<%= row.addedAt ? '' : 'legacy' %>"><%= row.addedBy %></td>
+              <td class="<%= row.addedAt ? '' : 'legacy' %>"><%= row.addedAt ? new Date(row.addedAt).toLocaleDateString() : 'legacy' %></td>
+              <td>
+                <form method="POST" action="/tracks/delete" class="inline-form delete-form" data-track-name="<%= row.trackName %>">
+                  <input type="hidden" name="filename" value="<%= row.filename %>">
+                  <input type="hidden" name="dryRun" value="">
+                  <button type="submit" class="link-button delete-button">delete</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <p class="hint"><%= rows.length %> track<%= rows.length === 1 ? '' : 's' %> total.</p>
+<%- include('partials/progress-modal') %>
+    <script>
+      document.querySelectorAll('.delete-form').forEach((form) => {
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const dryRunCheckbox = document.getElementById('global-dry-run');
+          const isDryRun = dryRunCheckbox ? dryRunCheckbox.checked : false;
+
+          const trackName = form.dataset.trackName;
+          const confirmMessage = isDryRun
+            ? `Run a dry-run delete of "${trackName}"? Nothing will actually be removed.`
+            : `Really delete "${trackName}"? This publishes a new version of the mixtape without it.`;
+          if (!confirm(confirmMessage)) return;
+
+          document.querySelectorAll('.delete-button').forEach((btn) => { btn.disabled = true; });
+
+          try {
+            const response = await fetch('/tracks/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ filename: form.querySelector('input[name="filename"]').value, dryRun: isDryRun ? 'on' : '' }),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+              throw new Error(data.error || 'Something went wrong.');
+            }
+            openProgressModal({ jobId: data.jobId, type: 'delete', dryRun: isDryRun });
+          } catch (err) {
+            alert(err.message);
+            document.querySelectorAll('.delete-button').forEach((btn) => { btn.disabled = false; });
+          }
+        });
+      });
+    </script>
+  <% } %>
+<%- include('partials/footer') %>

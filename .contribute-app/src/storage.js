@@ -4,6 +4,7 @@ import {
   GetObjectCommand,
   PutObjectCommand,
   HeadObjectCommand,
+  DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
@@ -91,6 +92,10 @@ export async function trackExists(client, bucket, filename) {
     if (err?.$metadata?.httpStatusCode === 404 || err?.name === "NotFound") return false;
     throw err;
   }
+}
+
+export async function deleteTrack(client, bucket, filename, { prefix = TRACK_PREFIX } = {}) {
+  await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: keyForFilename(filename, prefix) }));
 }
 
 export async function uploadTrack(client, bucket, filename, filePath, { prefix = TRACK_PREFIX } = {}) {

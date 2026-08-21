@@ -113,6 +113,14 @@ function makeFakeDeps(overrides = {}) {
     ...(overrides.bandwidth || {}),
   };
 
+  const manifest = {
+    async recordTrackAdded(client, bucket, filename, addedBy) {
+      calls.push(["manifest.recordTrackAdded", filename, addedBy]);
+      return { tracks: { [filename]: { addedBy, addedAt: "2026-08-20T00:00:00.000Z", status: "live" } }, pendingDeletes: [], publishLog: [] };
+    },
+    ...(overrides.manifest || {}),
+  };
+
   // Silent by default so `npm test` output stays clean — tests that
   // specifically want to verify logging behavior pass their own log/logError.
   const log = overrides.log || (() => {});
@@ -120,7 +128,7 @@ function makeFakeDeps(overrides = {}) {
 
   return {
     calls,
-    deps: { git, storage, convert, fetchNextVersion, publishPackage, buildPackage, bandwidth, log, logError },
+    deps: { git, storage, convert, fetchNextVersion, publishPackage, buildPackage, bandwidth, manifest, log, logError },
   };
 }
 
@@ -174,6 +182,7 @@ test("processSubmission happy path: runs every step in the exact plan-specified 
     "buildPackage",
     "listTracks",
     "publishPackage",
+    "manifest.recordTrackAdded",
     "bandwidth.recordPublish",
     "getHeadSha",
   ]);
@@ -1077,7 +1086,69 @@ test("a real publish that succeeds but fails to record bandwidth afterward is st
   // would be a real, unwanted second publish).
   assert.equal(result.dryRun, false);
   assert.ok(result.versionNumber);
-  assert.ok(errorLines.some((l) => l.includes("published successfully but failed to record bandwidth")));
+  assert.ok(errorLines.some((l) => l.includes("published successfully but failed to record it during stage \"record-bandwidth\"")));
+});
+
+// --- Manifest recording ---
+
+test("records the submitter and filename in the manifest after a successful real publish", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "publish-test-manifest-record-"));
+  t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
+  const uploadPath = await makeUploadFile(tmpDir);
+  const { calls, deps } = makeFakeDeps();
+
+  await processSubmission({ uploadPath, title: "New Track", artist: "Someone Else", displayName: "Alex" }, BASE_CONFIG, {
+    ...deps,
+    tmpBase: tmpDir,
+  });
+
+  assert.deepEqual(
+    calls.find((c) => c[0] === "manifest.recordTrackAdded"),
+    ["manifest.recordTrackAdded", "New Track - Someone Else.ogg", "Alex"]
+  );
+});
+
+test("dry run never records anything in the manifest (it never actually publishes)", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "publish-test-dryrun-manifest-norecord-"));
+  t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
+  const uploadPath = await makeUploadFile(tmpDir);
+  const { calls, deps } = makeFakeDeps();
+
+  await processSubmission(
+    { uploadPath, title: "T", artist: "A", displayName: "Alex", dryRun: true },
+    BASE_CONFIG,
+    { ...deps, tmpBase: tmpDir }
+  );
+
+  assert.ok(!calls.some((c) => c[0] === "manifest.recordTrackAdded"));
+});
+
+test("a real publish that succeeds but fails to record the manifest afterward is still reported as a success, not committedButNotPublished", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "publish-test-manifest-record-fail-"));
+  t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
+  const uploadPath = await makeUploadFile(tmpDir);
+  const errorLines = [];
+  const { deps } = makeFakeDeps({
+    manifest: {
+      async recordTrackAdded() {
+        throw new Error("R2 write hiccup");
+      },
+    },
+    logError: (...args) => errorLines.push(args.join(" ")),
+  });
+
+  const result = await processSubmission({ uploadPath, title: "T", artist: "A", displayName: "Alex" }, BASE_CONFIG, {
+    ...deps,
+    tmpBase: tmpDir,
+  });
+
+  // Same reasoning as the bandwidth-recording-failure case above: the
+  // publish itself genuinely succeeded and is irreversible, so a bookkeeping
+  // failure afterward must never surface as "not published" — that could
+  // prompt a well-meaning retry that causes a second, real publish.
+  assert.equal(result.dryRun, false);
+  assert.ok(result.versionNumber);
+  assert.ok(errorLines.some((l) => l.includes("published successfully but failed to record it during stage \"record-manifest\"")));
 });
 
 // --- Pre-publish track limit re-check ---
@@ -1194,4 +1265,130 @@ test("trackBandwidth defaults to true when config omits it (matches config.js's 
 
   assert.ok(calls.some((c) => c[0] === "bandwidth.getUsage"));
   assert.ok(calls.some((c) => c[0] === "bandwidth.recordPublish"));
+});
+
+// --- Progress hook + cancellation (for the loading-bar/modal feature) ---
+
+test("onStageChange fires for every real stage transition, in order, matching what's logged", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "publish-test-onstage-"));
+  t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
+  const uploadPath = await makeUploadFile(tmpDir);
+  const seenStages = [];
+  const { deps } = makeFakeDeps({ log: () => {} });
+
+  await processSubmission({ uploadPath, title: "T", artist: "A", displayName: "Alex" }, BASE_CONFIG, {
+    ...deps,
+    tmpBase: tmpDir,
+    onStageChange: (name) => seenStages.push(name),
+  });
+
+  assert.deepEqual(seenStages, [
+    "check-bandwidth-lock",
+    "check-duplicate",
+    "check-track-limit",
+    "clone",
+    "convert",
+    "check-file-size",
+    "upload-to-r2",
+    "regenerate-readme",
+    "commit",
+    "compute-version",
+    "push-branch",
+    "push-tag",
+    "download-all-tracks",
+    "tcli-build",
+    "check-track-limit-pre-publish",
+    "tcli-publish",
+    "record-manifest",
+    "record-bandwidth",
+    "cleanup",
+  ]);
+});
+
+test("checkCancelled true from the start aborts before any real work, throwing a cancelled SubmissionError", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "publish-test-cancel-early-"));
+  t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
+  const uploadPath = await makeUploadFile(tmpDir);
+  const { calls, deps } = makeFakeDeps();
+
+  await assert.rejects(
+    () =>
+      processSubmission({ uploadPath, title: "T", artist: "A", displayName: "Alex" }, BASE_CONFIG, {
+        ...deps,
+        tmpBase: tmpDir,
+        checkCancelled: () => true,
+      }),
+    (err) => {
+      assert.ok(err instanceof SubmissionError);
+      assert.equal(err.cancelled, true);
+      assert.equal(err.committedButNotPublished, false);
+      return true;
+    }
+  );
+
+  assert.ok(!calls.some((c) => c[0] === "cloneRepo"), "cancellation before the first stage should stop everything downstream");
+});
+
+test("cancellation is never checked once CANCEL_CUTOFF_STAGE (push-branch) is reached — the pipeline completes normally regardless", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "publish-test-cancel-toolate-"));
+  t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
+  const uploadPath = await makeUploadFile(tmpDir);
+  const { deps } = makeFakeDeps();
+
+  let pastCutoff = false;
+  const result = await processSubmission({ uploadPath, title: "T", artist: "A", displayName: "Alex" }, BASE_CONFIG, {
+    ...deps,
+    tmpBase: tmpDir,
+    checkCancelled: () => pastCutoff,
+    onStageChange: (name) => {
+      if (name === "push-branch") pastCutoff = true;
+    },
+  });
+
+  assert.ok(result.versionNumber, "the job ran to completion despite checkCancelled becoming true partway through");
+});
+
+test("dry run's onStageChange never includes tcli-publish or the real-publish-only stages", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "publish-test-onstage-dryrun-"));
+  t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
+  const uploadPath = await makeUploadFile(tmpDir);
+  const seenStages = [];
+  const { deps } = makeFakeDeps();
+
+  await processSubmission(
+    { uploadPath, title: "T", artist: "A", displayName: "Alex", dryRun: true },
+    BASE_CONFIG,
+    { ...deps, tmpBase: tmpDir, onStageChange: (name) => seenStages.push(name) }
+  );
+
+  assert.ok(!seenStages.includes("tcli-publish"));
+  assert.ok(!seenStages.includes("record-manifest"));
+  assert.ok(!seenStages.includes("record-bandwidth"));
+  assert.ok(seenStages.includes("tcli-build"));
+});
+
+test("cleanup is never itself subject to cancellation, even when checkCancelled is always true (must not mask the real error or skip cleanup)", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "publish-test-cancel-cleanup-"));
+  t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
+  const uploadPath = await makeUploadFile(tmpDir);
+  const { deps } = makeFakeDeps();
+
+  await assert.rejects(
+    () =>
+      processSubmission({ uploadPath, title: "T", artist: "A", displayName: "Alex" }, BASE_CONFIG, {
+        ...deps,
+        tmpBase: tmpDir,
+        checkCancelled: () => true,
+      }),
+    (err) => {
+      // Must surface as the original cancellation, not some secondary error
+      // from setStage("cleanup") itself throwing inside the finally block.
+      assert.equal(err.cancelled, true);
+      return true;
+    }
+  );
+
+  // The upload file must still have been cleaned up despite the early
+  // cancellation — proves the finally block's cleanup actually ran.
+  await assert.rejects(() => fsp.access(uploadPath));
 });
