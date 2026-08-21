@@ -1,6 +1,5 @@
 <%- include('partials/header') %>
-  <h1>TheFieldMixtape</h1>
-  <p class="subtitle">Add a track to the mixtape</p>
+<%- include('partials/label-strip', { title: 'TheFieldMixtape', subtitle: 'Add a track to the mixtape' }) %>
   <% if (error) { %>
     <p class="error"><%= error %></p>
   <% } %>
@@ -13,6 +12,6 @@
       Mixtape Password
       <input type="password" name="password" required autocomplete="current-password">
     </label>
-    <button type="submit">Log in</button>
+    <button type="submit" class="btn-primary">Log in</button>
   </form>
 <%- include('partials/footer') %>

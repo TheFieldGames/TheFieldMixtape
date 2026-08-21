@@ -1,8 +1,14 @@
 <%- include('partials/header') %>
   <% const added = locals.added || []; %>
   <% const deleted = locals.deleted || []; %>
+  <%
+    let pageTitle;
+    if (success && dryRun) pageTitle = 'Dry run successful';
+    else if (success) pageTitle = 'Published';
+    else pageTitle = `Something went wrong${dryRun ? ' (dry run)' : ''}`;
+  %>
+<%- include('partials/label-strip', { title: pageTitle }) %>
   <% if (success && dryRun) { %>
-    <h1>Dry run successful</h1>
     <p>
       If this had been real, it would have published as version <strong><%= versionNumber %></strong>:
     </p>
@@ -12,7 +18,6 @@
     </ul>
     <p class="hint">Nothing was actually published to Thunderstore. See the isolated <code><%= branch %></code> branch on GitHub for the test commit.</p>
   <% } else if (success) { %>
-    <h1>Published</h1>
     <p>The mixtape is now at version <strong><%= versionNumber %></strong>:</p>
     <ul>
       <% added.forEach((name) => { %><li>+ <%= name %></li><% }) %>
@@ -20,7 +25,6 @@
     </ul>
     <p><a href="<%= thunderstoreUrl %>" target="_blank" rel="noopener">View on Thunderstore</a></p>
   <% } else { %>
-    <h1>Something went wrong<% if (dryRun) { %> (dry run)<% } %></h1>
     <p class="error"><%= error %></p>
     <% if (committedButNotPublished) { %>
       <p class="warning">
@@ -29,5 +33,5 @@
       </p>
     <% } %>
   <% } %>
-  <p><a href="/">Queue a track</a> &mdash; <a href="/tracks">View tracks</a></p>
+  <p><a href="/">Back to tracks</a></p>
 <%- include('partials/footer') %>

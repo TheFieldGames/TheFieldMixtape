@@ -1,26 +1,31 @@
-:root {
-  color-scheme: light dark;
-  --fg: #1a1a1a;
-  --bg: #fafafa;
-  --card-bg: rgb(255 255 255 / 88%);
-  --border: #d0d0d0;
-  --error: #b3261e;
-  --warning: #8a5a00;
-  --success: #1e7a34;
-  --link: #2c5cc5;
-}
+/* ===========================================================================
+   Design tokens — see /design/field-mixtape-design-spec.md for the full
+   rationale. The app is themed as a physical cassette tape, pulled from the
+   background photo itself (a cassette labeled "The Field" sits in the
+   scene) — deliberately one fixed dark aesthetic, not a light/dark toggle,
+   so (unlike an earlier version of this file) there's no
+   prefers-color-scheme variant here.
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --fg: #e8e8e8;
-    --bg: #181818;
-    --card-bg: rgb(24 24 24 / 82%);
-    --border: #3a3a3a;
-    --error: #ff8a80;
-    --warning: #ffca66;
-    --success: #7ddc94;
-    --link: #7aa2ff;
-  }
+   Only ONE accent (--stripe-red) is used for primary, consequential
+   actions (Publish, Log in — the one true call-to-action on their page).
+   --pending-amber marks "addition/pending" state, --pending-red marks
+   "removal" state — don't introduce further accent hues.
+   =========================================================================== */
+:root {
+  --shell: rgba(30, 28, 29, 0.9);        /* cassette shell / card background */
+  --shell-light: #46434a;                 /* hub rings, secondary shell surfaces */
+  --shell-window: #1c1a1c;                /* recessed surfaces: text inputs */
+  --label-cream: #f2ecdd;                 /* paper label background */
+  --stripe-orange: #d98b3e;               /* label edge stripe, gradient start */
+  --stripe-red: #b23a2e;                  /* label edge stripe end; the ONE primary accent */
+  --text-cream: #f5f0e6;                  /* primary text on dark shell */
+  --text-muted: rgb(245 240 230 / 62%);   /* secondary text on dark shell */
+  --pending-amber: #d9a441;               /* "addition" / pending-new state */
+  --pending-red: #c1554a;                 /* "removal" / pending-delete state */
+  --text-error: #e8887a;                  /* readable red for error copy/hover states — lighter than the fill reds above so it stays legible as body text */
+  --border-subtle: rgb(245 240 230 / 14%);
+  --border-faint: rgb(245 240 230 / 6%);
+  --page-bg: #14140f;                     /* outer page, mostly hidden behind the background photo */
 }
 
 * {
@@ -30,9 +35,9 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  color: var(--fg);
-  background: var(--bg);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  color: var(--text-cream);
+  background: var(--page-bg);
 }
 
 /* A dedicated fixed-position layer for the background image, rather than
@@ -68,24 +73,93 @@ body::before {
   navigation: auto;
 }
 
+/* ---------- Cassette card shell ---------- */
+
 .container {
   max-width: 480px;
   margin: 3rem auto;
-  padding: 1.5rem 1.25rem;
-  background: var(--card-bg);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border-radius: 12px;
-  box-shadow: 0 4px 24px rgb(0 0 0 / 20%);
+  padding: 1.25rem 0 1.5rem;
+  background: var(--shell);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-radius: 18px;
+  box-shadow: 0 20px 50px rgb(0 0 0 / 40%), inset 0 1px 0 rgb(255 255 255 / 5%);
+  position: relative;
 }
 
-h1 {
-  margin-bottom: 0.25rem;
+.container-wide {
+  max-width: 640px;
 }
 
-.subtitle {
-  color: color-mix(in srgb, var(--fg) 65%, transparent);
-  margin-top: 0;
+/* Page content (everything after the label strip) gets the horizontal
+   padding the card itself no longer applies uniformly — the hubs/label
+   strip manage their own edge-to-edge spacing instead. */
+.container > *:not(.hubs):not(.label-strip) {
+  margin-left: 1.25rem;
+  margin-right: 1.25rem;
+}
+
+.hubs {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 26px 14px;
+}
+
+.hub {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 40%);
+  border: 3px solid var(--shell-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.hub::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--shell-light);
+}
+
+.label-strip {
+  background: var(--label-cream);
+  border-radius: 3px;
+  padding: 12px 16px 14px 18px;
+  transform: rotate(-0.4deg);
+  box-shadow: 0 3px 8px rgb(0 0 0 / 30%);
+  position: relative;
+  margin: 0 20px 1rem;
+  overflow: hidden;
+}
+
+.label-strip::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 6px;
+  background: linear-gradient(90deg, var(--stripe-orange) 0 70%, var(--stripe-red) 70% 100%);
+}
+
+.label-strip h1 {
+  font-family: "Kalam", cursive;
+  font-weight: 700;
+  font-size: 1.4rem;
+  color: #2b2822;
+  margin: 0 0 2px;
+  line-height: 1.15;
+}
+
+.label-strip p {
+  font-family: "Inter", sans-serif;
+  font-size: 0.72rem;
+  color: #6b6355;
+  margin: 0;
 }
 
 form {
@@ -97,19 +171,26 @@ form {
 
 .inline-form {
   display: inline;
+  margin: 0;
 }
 
 label {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .checkbox-label {
   flex-direction: row;
   align-items: center;
   gap: 0.5rem;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text-cream);
 }
 
 .checkbox-label input[type="checkbox"] {
@@ -118,81 +199,62 @@ label {
 }
 
 .hint {
-  margin: -0.5rem 0 0;
+  margin: 0.4rem 0 0;
   font-size: 0.8rem;
-  color: color-mix(in srgb, var(--fg) 65%, transparent);
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: normal;
 }
 
-.info-panel {
-  margin: 1rem 0;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 0.85rem;
-  color: color-mix(in srgb, var(--fg) 65%, transparent);
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.info-panel p {
-  margin: 0;
-}
-
-.pending-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.pending-list li {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  justify-content: space-between;
-}
-
-#publish-button {
-  padding: 0.6rem 1rem;
-  border: none;
-  border-radius: 6px;
-  background: var(--link);
-  color: white;
-  font-size: 1rem;
-  cursor: pointer;
-  align-self: flex-start;
-}
-
-#publish-button:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
+/* ---------- Buttons ---------- */
 
 input[type="text"],
 input[type="password"],
 input[type="file"] {
   padding: 0.5rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--shell-window);
+  color: var(--text-cream);
   font-size: 1rem;
 }
 
-button[type="submit"] {
+button {
+  font-family: inherit;
+}
+
+.btn-primary,
+.btn-secondary {
   padding: 0.6rem 1rem;
-  border: none;
-  border-radius: 6px;
-  background: var(--link);
-  color: white;
-  font-size: 1rem;
+  border-radius: 7px;
+  font-size: 0.95rem;
+  font-weight: 600;
   cursor: pointer;
 }
 
-button[type="submit"]:disabled {
+/* The one place the primary accent fill is used — Publish, Log in: the
+   single consequential action on whichever page it appears. Deliberately
+   scoped to the .btn-primary class only, not button[type="submit"] — every
+   ×/↺ icon button and the log-out button are also real form submits, and
+   an element+attribute selector like button[type="submit"] out-specifies a
+   single class, so it was silently overriding their own styling with a
+   full red fill. */
+.btn-primary {
+  background: var(--stripe-red);
+  color: var(--text-cream);
+  border: none;
+}
+
+/* Reversible/non-terminal actions (queueing an add) get an outline instead
+   of the loud fill, so they read as lower-stakes than Publish. */
+.btn-secondary {
+  background: transparent;
+  color: var(--text-cream);
+  border: 1px solid rgb(245 240 230 / 30%);
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled {
   opacity: 0.6;
   cursor: default;
 }
@@ -201,7 +263,7 @@ button[type="submit"]:disabled {
   background: none;
   border: none;
   padding: 0;
-  color: var(--link);
+  color: var(--text-cream);
   text-decoration: underline;
   cursor: pointer;
   font-size: inherit;
@@ -211,10 +273,6 @@ button[type="submit"]:disabled {
   opacity: 0.6;
   cursor: default;
   text-decoration: none;
-}
-
-.delete-button {
-  color: var(--error);
 }
 
 .modal-overlay {
@@ -235,16 +293,17 @@ button[type="submit"]:disabled {
   max-width: 420px;
   width: calc(100% - 2rem);
   padding: 1.5rem;
-  background: var(--card-bg);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgb(0 0 0 / 35%);
+  background: var(--shell);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-radius: 18px;
+  box-shadow: 0 20px 50px rgb(0 0 0 / 40%);
 }
 
 .modal h2 {
   margin-top: 0;
   margin-bottom: 0.5rem;
+  font-weight: 600;
 }
 
 .progress-stage-label {
@@ -258,7 +317,7 @@ button[type="submit"]:disabled {
   height: 0.75rem;
   border-radius: 999px;
   overflow: hidden;
-  background: var(--border);
+  background: var(--border-subtle);
 }
 
 /* One bar-wide fill (not one per stage) — width is animated from JS
@@ -273,7 +332,7 @@ button[type="submit"]:disabled {
   position: absolute;
   inset: 0;
   width: 0%;
-  background-color: var(--link);
+  background-color: var(--stripe-red);
   background-image: linear-gradient(
     135deg,
     rgb(255 255 255 / 25%) 25%,
@@ -316,93 +375,106 @@ button[type="submit"]:disabled {
 }
 
 .error {
-  color: var(--error);
+  color: var(--text-error);
 }
 
 .warning {
-  color: var(--warning);
+  color: var(--pending-amber);
 }
 
 .success {
-  color: var(--success);
-}
-
-.wait-message {
-  margin-top: 1rem;
-  font-size: 0.9rem;
-  color: color-mix(in srgb, var(--fg) 65%, transparent);
+  color: var(--pending-amber);
 }
 
 a {
-  color: var(--link);
+  color: var(--text-cream);
 }
 
-.container-wide {
-  max-width: 640px;
+/* ---------- Scroll fades — replaces the native scrollbar on the live
+   tracks table body with a content-aware gradient hint. JS
+   (public/scroll-fade.js) toggles .visible based on actual scroll
+   position. ---------- */
+
+.scroll-wrap {
+  position: relative;
 }
 
-.table-scroll {
-  overflow-x: auto;
-  margin-top: 1rem;
+.scroll-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 22px;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.15s ease;
 }
 
-.track-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.85rem;
+.scroll-fade.top {
+  top: 0;
+  background: linear-gradient(180deg, rgb(30 28 29 / 85%), transparent);
 }
 
-.track-table th,
-.track-table td {
-  text-align: left;
-  padding: 0.4rem 0.5rem;
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap;
+.scroll-fade.bottom {
+  bottom: 0;
+  background: linear-gradient(0deg, rgb(30 28 29 / 85%), transparent);
 }
 
-.track-table th {
-  color: color-mix(in srgb, var(--fg) 65%, transparent);
-  font-weight: 600;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+.scroll-fade.visible {
+  opacity: 1;
 }
 
-.track-table td.legacy {
-  color: color-mix(in srgb, var(--fg) 50%, transparent);
-  font-style: italic;
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.track-table-scroll {
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+/* Deck bar — matches design/field-mixtape-lock.html exactly: same text,
+   same fonts, same placement (the elapsed timer sits in the right-hand
+   group, between the idle warning and the Start/Stop button — not next to
+   the status text on the left). */
 .deck-bar {
+  max-width: 1180px;
+  margin: 0 auto 26px;
+  padding: 12px 20px;
+  background: rgb(20 18 19 / 92%);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 16px;
   flex-wrap: wrap;
-  margin: 0 0 1rem;
-  padding: 0.6rem 0.9rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 0.85rem;
 }
 
 .deck-status {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 10px;
 }
 
 .rec-dot {
-  width: 0.6rem;
-  height: 0.6rem;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  border: 2px solid var(--error);
+  border: 2px solid var(--stripe-red);
   box-sizing: border-box;
   flex-shrink: 0;
 }
 
 .rec-dot.filled {
-  background: var(--error);
+  background: var(--stripe-red);
 }
 
 .rec-dot.pulsing {
@@ -420,28 +492,112 @@ a {
   }
 }
 
-.deck-timer {
-  font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--fg) 65%, transparent);
+.deck-text-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
-.deck-actions {
+.deck-text {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 13px;
+  color: var(--text-cream);
+}
+
+.deck-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.deck-right {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 14px;
   flex-wrap: wrap;
+}
+
+.deck-timer {
+  font-family: "IBM Plex Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Start editing: the one outline button styled with --stripe-red (not a
+   fill — that's reserved for Publish/Log in). Carries its own small
+   rec-dot glyph, distinct from the status rec-dot elsewhere in the bar. */
+/* [hidden] must win over the flex display below — an author rule always
+   beats the browser's default [hidden] { display: none }, so without this
+   the Start-editing button stayed visible even after JS set hidden=true. */
+.btn-rec[hidden] {
+  display: none;
+}
+
+.btn-rec {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border-radius: 7px;
+  border: 1px solid var(--stripe-red);
+  background: transparent;
+  color: var(--text-error);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-rec:hover {
+  background: rgb(178 58 46 / 15%);
+}
+
+.btn-rec .rec-dot {
+  border-color: var(--text-error);
+}
+
+/* Stop editing: its own class (not .btn-secondary, which is shared with
+   "+ Add to queue" and has different sizing) so it matches the mockup's
+   .btn-stop exactly. */
+.btn-stop[hidden] {
+  display: none;
+}
+
+.btn-stop {
+  padding: 8px 16px;
+  border-radius: 7px;
+  border: 1px solid rgb(245 240 230 / 30%);
+  background: transparent;
+  color: var(--text-cream);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .idle-warning {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  color: var(--warning);
-  font-size: 0.8rem;
+  gap: 10px;
+  background: rgb(217 164 65 / 14%);
+  border: 1px solid rgb(217 164 65 / 40%);
+  border-radius: 7px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--pending-amber);
 }
 
 .idle-warning[hidden] {
   display: none;
+}
+
+.idle-warning button {
+  background: var(--pending-amber);
+  color: #2b2822;
+  border: none;
+  border-radius: 5px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 /* Lock-gated controls: dimmed and inert whenever the current session
@@ -451,7 +607,7 @@ a {
    modal's cancel-cutoff has with its own server-side check. */
 body[data-lock-state="idle"] .lock-gated,
 body[data-lock-state="other"] .lock-gated {
-  opacity: 0.45;
+  opacity: 0.38;
   pointer-events: none;
 }
 
@@ -459,11 +615,522 @@ body[data-lock-state="other"] .lock-gated {
   display: none;
   font-size: 0.8rem;
   font-style: italic;
-  color: color-mix(in srgb, var(--fg) 65%, transparent);
-  margin: -0.5rem 0 0.5rem;
+  color: var(--text-muted);
+  margin: 0.4rem 0 0.5rem;
 }
 
 body[data-lock-state="idle"] .lock-hint,
 body[data-lock-state="other"] .lock-hint {
   display: block;
+}
+
+/* ===========================================================================
+   Side A / Side B batch layout — the merged tracks+queue page. See
+   design/field-mixtape-design-spec.md's "Side A"/"Side B"/"Batch bar"
+   sections and design/field-mixtape-batch-v3.html for the reference.
+   =========================================================================== */
+
+.batch-layout {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 7rem;
+}
+
+/* Both the top-bar (error state) and account-bar (name/log-out) sit
+   directly on the background photo, which is often light — without an
+   opaque-ish panel behind them, light/cream text blends straight into it.
+   Same treatment as the deck-bar below, for the same reason. */
+.top-bar,
+.account-bar {
+  max-width: 1180px;
+  margin: 0 auto 0.75rem;
+  padding: 0.6rem 1rem;
+  background: rgb(20 18 19 / 92%);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+}
+
+.top-bar {
+  text-align: center;
+}
+
+.account-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.layout {
+  display: flex;
+  gap: 1.75rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.side-a,
+.side-b {
+  margin: 0;
+}
+
+.side-a {
+  flex: 1 1 620px;
+  max-width: 640px;
+}
+
+.side-b {
+  flex: 1 1 340px;
+  max-width: 380px;
+}
+
+@media (max-width: 720px) {
+  .side-a,
+  .side-b {
+    max-width: 100%;
+  }
+}
+
+/* Label strip now optionally carries a side-marker on the right (Side
+   A/Side B pages) — title/subtitle move into .label-main so they can sit
+   in a flex row alongside it without disturbing pages that don't use one. */
+.label-strip {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.label-main {
+  min-width: 0;
+}
+
+.side-marker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+
+.side-marker .box {
+  width: 19px;
+  height: 19px;
+  border-radius: 3px;
+  background: #3a362f;
+  color: var(--label-cream);
+  font-family: "Archivo Black", "Arial Narrow", sans-serif;
+  font-size: 0.68rem;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.side-marker .txt {
+  font-family: "Kalam", cursive;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #6b6355;
+}
+
+/* ---------- Side A: track table, rebuilt as a CSS grid (not <table>) so
+   an inline removal mark can flip a row's whole visual state at once. ---------- */
+
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.table-toolbar .search {
+  background: rgb(0 0 0 / 35%);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  color: var(--text-cream);
+  font-size: 0.8rem;
+  width: 9.5rem;
+}
+
+.t-head,
+.t-row {
+  display: grid;
+  grid-template-columns: 2rem 1fr 4rem 4.4rem 1.9rem;
+  align-items: center;
+}
+
+.t-head {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.t-row {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-faint);
+  font-size: 0.82rem;
+}
+
+.t-row[hidden] {
+  display: none;
+}
+
+.t-row.removing {
+  border-bottom-style: dashed;
+  opacity: 0.6;
+}
+
+.t-row.removing .t-title,
+.t-row.removing .t-by {
+  text-decoration: line-through;
+}
+
+.t-num {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  color: var(--pending-red);
+  opacity: 0.85;
+}
+
+.t-title {
+  color: var(--text-cream);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 0.5rem;
+}
+
+.t-by {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.t-date {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.66rem;
+  color: var(--text-muted);
+}
+
+.t-by.legacy,
+.t-date.legacy {
+  color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+  font-style: italic;
+}
+
+.t-action {
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  justify-self: end;
+}
+
+.t-action:hover {
+  background: rgb(193 85 74 / 18%);
+  border-color: rgb(193 85 74 / 50%);
+  color: var(--text-error);
+}
+
+.t-action.undo {
+  color: var(--pending-amber);
+  border-color: rgb(217 164 65 / 40%);
+  font-size: 0.9rem;
+}
+
+.table-footer {
+  margin: 0.6rem 0 0;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+/* ---------- Side B: file staging + Adding/Removing queue lists ---------- */
+
+.field {
+  margin-top: 0.25rem;
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  background: rgb(0 0 0 / 35%);
+  border: 1px dashed var(--border-subtle);
+  border-radius: 6px;
+  padding: 0.5rem 0.65rem;
+}
+
+.file-row input[type="file"] {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.file-helper {
+  margin: 0.4rem 0 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.staged-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.staged-list[hidden] {
+  display: none;
+}
+
+.staged-item {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+}
+
+.staged-fields {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.staged-fields label {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.6rem;
+}
+
+.staged-fields input[type="text"] {
+  padding: 0.35rem 0.45rem;
+  font-size: 0.78rem;
+  width: 100%;
+}
+
+.section-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 1rem;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
+
+.tag-pending {
+  background: rgb(217 164 65 / 16%);
+  color: var(--pending-amber);
+  border: 1px solid rgb(217 164 65 / 40%);
+}
+
+.tag-removing {
+  background: rgb(193 85 74 / 18%);
+  color: var(--text-error);
+  border: 1px solid rgb(193 85 74 / 45%);
+}
+
+.queue-scroll {
+  max-height: 13rem;
+  overflow-y: auto;
+}
+
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px dashed var(--border-subtle);
+}
+
+.queue-item:last-child {
+  border-bottom: none;
+}
+
+.qi-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.qi-title {
+  font-size: 0.8rem;
+  color: var(--text-cream);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qi-title.strike {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.qi-artist {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.qi-remove,
+.qi-undo {
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.qi-remove:hover {
+  background: rgb(178 58 46 / 18%);
+  border-color: rgb(178 58 46 / 50%);
+  color: var(--text-error);
+}
+
+.qi-undo {
+  color: var(--pending-amber);
+  border-color: rgb(217 164 65 / 40%);
+}
+
+.divider {
+  height: 1px;
+  background: var(--border-faint);
+  margin-top: 0.75rem;
+}
+
+/* ---------- Sticky batch bar ---------- */
+
+.batch-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  background: rgb(20 18 19 / 95%);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-top: 1px solid var(--border-subtle);
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.batch-bar #publish-button {
+  align-self: center;
+}
+
+.batch-bar .lock-hint {
+  margin: 0;
+  flex-basis: 100%;
+  text-align: center;
+}
+
+.batch-quota {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-right: 1.1rem;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.batch-quota-track {
+  width: 3.5rem;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--border-subtle);
+  overflow: hidden;
+}
+
+.batch-quota-fill {
+  height: 100%;
+  background: var(--stripe-orange);
+  border-radius: 3px;
+}
+
+.batch-quota-fill.locked {
+  background: var(--pending-red);
+}
+
+.batch-quota-text {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.batch-quota-text b {
+  color: var(--text-cream);
+  font-weight: 500;
+}
+
+.batch-summary {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.78rem;
+  color: var(--text-cream);
+  display: flex;
+  gap: 0.85rem;
+  align-items: baseline;
+}
+
+.batch-summary .add {
+  color: var(--pending-amber);
+}
+
+.batch-summary .rem {
+  color: var(--text-error);
+}
+
+.batch-summary .muted {
+  color: var(--text-muted);
 }

@@ -6,7 +6,7 @@ import { requireAuth, sanitizeDisplayName } from "../src/auth.js";
 import { runExclusive } from "../src/queue.js";
 import { requireLock } from "../src/editLock.js";
 import { queueTrackAdd } from "../src/queueActions.js";
-import { SubmissionError, MAX_TRACKS, MAX_TRACK_FILE_SIZE_KB } from "../src/publish.js";
+import { SubmissionError } from "../src/publish.js";
 import { log, logError } from "../src/logger.js";
 
 // 100MB cap per the plan — a normal .ogg/.mp3 track is a few MB, this is
@@ -19,16 +19,6 @@ const upload = multer({
 
 export function createIndexRouter(config, lockStore) {
   const router = Router();
-
-  router.get("/", requireAuth, async (req, res) => {
-    res.render("upload", {
-      displayName: req.session.displayName,
-      error: null,
-      maxTracks: MAX_TRACKS,
-      maxTrackFileSizeKb: MAX_TRACK_FILE_SIZE_KB,
-      lockState: lockStore.getLockState(req.session.sessionId),
-    });
-  });
 
   // Queueing is fast (convert + upload to R2's pending prefix + a manifest
   // write — no git/tcli involved at all), so unlike a Publish this responds

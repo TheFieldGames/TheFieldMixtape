@@ -4,7 +4,7 @@ import { requireAuth, sanitizeDisplayName } from "../src/auth.js";
 import { runExclusive } from "../src/queue.js";
 import { requireLock } from "../src/editLock.js";
 import { queueTrackDelete, cancelQueuedDeletion } from "../src/queueActions.js";
-import { processPublish, SubmissionError } from "../src/publish.js";
+import { processPublish, SubmissionError, MAX_TRACKS, MAX_TRACK_FILE_SIZE_KB } from "../src/publish.js";
 import * as storage from "../src/storage.js";
 import * as manifest from "../src/manifest.js";
 import * as bandwidth from "../src/bandwidth.js";
@@ -35,9 +35,26 @@ function toRow(filename, entry) {
 export function createTracksRouter(config, lockStore) {
   const router = Router();
 
-  router.get("/tracks", requireAuth, async (req, res) => {
+  router.get("/", requireAuth, async (req, res) => {
     const isAdmin = req.session.isAdmin === true;
     const progressSegments = { real: segmentsFor("publish"), dryRun: segmentsFor("publish", { dryRun: true }) };
+    const lockState = lockStore.getLockState(req.session.sessionId);
+
+    const renderPage = (data, status = 200) =>
+      res.status(status).render("tracks", {
+        displayName: req.session.displayName,
+        isAdmin,
+        progressSegments,
+        lockState,
+        maxTracks: MAX_TRACKS,
+        maxTrackFileSizeKb: MAX_TRACK_FILE_SIZE_KB,
+        rows: [],
+        pendingAddRows: [],
+        pendingDeleteRows: [],
+        usageInfo: null,
+        error: null,
+        ...data,
+      });
 
     try {
       const trackNames = await storage.listTracks(config.r2Client, config.r2Bucket);
@@ -50,13 +67,15 @@ export function createTracksRouter(config, lockStore) {
 
       const pendingDeleteSet = new Set(manifestData.pendingDeletes);
 
-      // Live tracks, excluding anything queued for deletion — those show
-      // in their own "pending removal" section below instead, so a track
-      // isn't listed twice with conflicting actions.
+      // Every currently-live track, including ones marked for removal —
+      // those stay visible with a `pendingDelete` flag rather than
+      // disappearing, so Side A can render them as dashed/struck rows with
+      // an undo action instead of hiding them in a separate list.
       const rows = sortTracks(
-        trackNames
-          .filter((trackName) => !pendingDeleteSet.has(`${trackName}.ogg`))
-          .map((trackName) => toRow(`${trackName}.ogg`, manifestData.tracks[`${trackName}.ogg`]))
+        trackNames.map((trackName) => ({
+          ...toRow(`${trackName}.ogg`, manifestData.tracks[`${trackName}.ogg`]),
+          pendingDelete: pendingDeleteSet.has(`${trackName}.ogg`),
+        }))
       );
 
       const pendingAddRows = sortTracks(
@@ -65,9 +84,10 @@ export function createTracksRouter(config, lockStore) {
           .map(([filename, entry]) => toRow(filename, entry))
       );
 
-      const pendingDeleteRows = sortTracks(
-        manifestData.pendingDeletes.map((filename) => toRow(filename, manifestData.tracks[filename]))
-      );
+      // Derived from `rows` (not re-read from the manifest separately) so
+      // Side B's "Removing" list can never disagree with Side A's dashed
+      // rows about which tracks are marked.
+      const pendingDeleteRows = rows.filter((row) => row.pendingDelete);
 
       // Best-effort: a transient R2 read hiccup here shouldn't block the
       // whole page from loading — degrade to "usage info unavailable"
@@ -87,32 +107,16 @@ export function createTracksRouter(config, lockStore) {
         logError("Failed to load bandwidth usage for the indicator (non-fatal):", err.message);
       }
 
-      res.render("tracks", {
-        displayName: req.session.displayName,
-        isAdmin,
-        rows,
-        pendingAddRows,
-        pendingDeleteRows,
-        usageInfo,
-        error: null,
-        progressSegments,
-        lockState: lockStore.getLockState(req.session.sessionId),
-      });
+      renderPage({ rows, pendingAddRows, pendingDeleteRows, usageInfo });
     } catch (err) {
       logError("Failed to load the track list:", err.message);
-      res.status(500).render("tracks", {
-        displayName: req.session.displayName,
-        isAdmin,
-        rows: [],
-        pendingAddRows: [],
-        pendingDeleteRows: [],
-        usageInfo: null,
-        error: "Couldn't load the track list right now — try again shortly.",
-        progressSegments,
-        lockState: lockStore.getLockState(req.session.sessionId),
-      });
+      renderPage({ error: "Couldn't load the track list right now — try again shortly." }, 500);
     }
   });
+
+  // Old bookmarks/links to the previous standalone tracks page land on the
+  // merged Side A/B view, now at "/".
+  router.get("/tracks", requireAuth, (req, res) => res.redirect("/"));
 
   // Queueing a deletion (or cancelling a still-pending add) is fast — no
   // git/tcli involved — so this responds synchronously, same as POST

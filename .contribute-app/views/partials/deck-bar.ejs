@@ -1,16 +1,19 @@
 <div class="deck-bar" id="deck-bar">
   <div class="deck-status">
     <span class="rec-dot" id="rec-dot"></span>
-    <span id="deck-text">&nbsp;</span>
-    <span class="deck-timer" id="deck-timer"></span>
-  </div>
-  <div class="deck-actions">
-    <div class="idle-warning" id="idle-warning" hidden>
-      <span>Still there? Editing stops soon from inactivity.</span>
-      <button type="button" id="still-here-button" class="link-button">I&rsquo;m still here</button>
+    <div class="deck-text-wrap">
+      <span class="deck-text" id="deck-text">&nbsp;</span>
+      <span class="deck-sub" id="deck-sub"></span>
     </div>
-    <button type="button" id="start-editing-button" class="link-button" hidden>Start editing</button>
-    <button type="button" id="stop-editing-button" class="link-button" hidden>Stop editing</button>
+  </div>
+  <div class="deck-right">
+    <div class="idle-warning" id="idle-warning" hidden>
+      <span>Still there? Recording stops soon from inactivity.</span>
+      <button type="button" id="still-here-button">I'm still here</button>
+    </div>
+    <span class="deck-timer" id="deck-timer"></span>
+    <button type="button" id="start-editing-button" class="btn-rec" hidden><span class="rec-dot" aria-hidden="true"></span>Start editing</button>
+    <button type="button" id="stop-editing-button" class="btn-stop" hidden>Stop editing</button>
   </div>
 </div>
 <script>window.INITIAL_LOCK_STATE = <%- JSON.stringify(lockState) %>;</script>

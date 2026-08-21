@@ -1,112 +1,170 @@
-<%- include('partials/header', { containerModifier: 'container-wide' }) %>
-<%- include('partials/deck-bar') %>
-  <h1>Tracks</h1>
-  <p class="subtitle">
-    <a href="/">Add a track</a>
-    &mdash;
-    <form method="POST" action="/logout" class="inline-form">
-      <button type="submit" class="link-button">log out</button>
-    </form>
-  </p>
+<%- include('partials/header', { layout: 'batch' }) %>
   <% if (error) { %>
-    <p class="error"><%= error %></p>
+    <p class="error top-bar"><%= error %></p>
   <% } else { %>
-    <% const pendingCount = pendingAddRows.length + pendingDeleteRows.length; %>
-    <% if (pendingCount > 0) { %>
-      <div class="info-panel">
-        <p><strong><%= pendingCount %> pending change<%= pendingCount === 1 ? '' : 's' %></strong></p>
-        <% if (pendingAddRows.length > 0) { %>
-          <p>Queued to add:</p>
-          <ul class="pending-list">
-            <% pendingAddRows.forEach((row) => { %>
-              <li>
-                <%= row.trackName %> <span class="hint">(queued by <%= row.addedBy %>)</span>
-                <form method="POST" action="/tracks/delete" class="inline-form pending-action-form lock-gated" data-confirm='Cancel queuing "<%= row.trackName %>"? It will never be published.'>
-                  <input type="hidden" name="filename" value="<%= row.filename %>">
-                  <button type="submit" class="link-button delete-button">cancel</button>
-                </form>
-              </li>
-            <% }) %>
-          </ul>
-        <% } %>
-        <% if (pendingDeleteRows.length > 0) { %>
-          <p>Queued to remove:</p>
-          <ul class="pending-list">
-            <% pendingDeleteRows.forEach((row) => { %>
-              <li>
-                <%= row.trackName %>
-                <form method="POST" action="/tracks/undo-delete" class="inline-form pending-action-form lock-gated">
-                  <input type="hidden" name="filename" value="<%= row.filename %>">
-                  <button type="submit" class="link-button">undo</button>
-                </form>
-              </li>
-            <% }) %>
-          </ul>
-        <% } %>
-        <% if (usageInfo) { %>
-          <% if (usageInfo.locked) { %>
-            <p class="warning">
-              Monthly publish limit reached (<%= usageInfo.usageGB %>GB of <%= usageInfo.capGB %>GB used) &mdash;
-              real publishes are locked until next month. Dry runs still work.
-            </p>
-          <% } else { %>
-            <p>
-              <%= usageInfo.usageGB %>GB of <%= usageInfo.capGB %>GB used this month<% if (usageInfo.publishesRemaining !== null) { %>
-              &mdash; about <%= usageInfo.publishesRemaining %> more publish<%= usageInfo.publishesRemaining === 1 ? '' : 'es' %> left at the current mixtape size<% } %>.
-            </p>
-          <% } %>
-        <% } %>
-        <% if (isAdmin) { %>
-          <label class="checkbox-label">
-            <input type="checkbox" id="publish-dry-run">
-            Dry run
-          </label>
-        <% } %>
-        <p class="lock-hint">Press &ldquo;Start editing&rdquo; above before publishing.</p>
-        <button type="button" id="publish-button" class="lock-gated">Publish <%= pendingCount %> change<%= pendingCount === 1 ? '' : 's' %></button>
-      </div>
-    <% } else { %>
-      <p class="hint">No pending changes.</p>
-    <% } %>
-    <p class="lock-hint">Press &ldquo;Start editing&rdquo; above before marking a track for removal.</p>
-    <div class="table-scroll">
-      <table class="track-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Track</th>
-            <th>Added by</th>
-            <th>Added</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <% rows.forEach((row, i) => { %>
-            <tr>
-              <td><%= i + 1 %></td>
-              <td><%= row.trackName %></td>
-              <td class="<%= row.addedAt ? '' : 'legacy' %>"><%= row.addedBy %></td>
-              <td class="<%= row.addedAt ? '' : 'legacy' %>"><%= row.addedAt ? new Date(row.addedAt).toLocaleDateString() : 'legacy' %></td>
-              <td>
-                <form method="POST" action="/tracks/delete" class="inline-form pending-action-form lock-gated" data-confirm='Queue "<%= row.trackName %>" for removal? It will be removed from the mixtape the next time someone publishes.'>
-                  <input type="hidden" name="filename" value="<%= row.filename %>">
-                  <button type="submit" class="link-button delete-button">delete</button>
-                </form>
-              </td>
-            </tr>
-          <% }) %>
-        </tbody>
-      </table>
+    <div class="account-bar">
+      <span>Logged in as <strong><%= displayName %></strong></span>
+      <form method="POST" action="/logout" class="inline-form">
+        <button type="submit" class="btn-secondary">log out</button>
+      </form>
     </div>
-    <p class="hint"><%= rows.length %> track<%= rows.length === 1 ? '' : 's' %> total.</p>
+    <%- include('partials/deck-bar') %>
+
+    <% const pendingCount = pendingAddRows.length + pendingDeleteRows.length; %>
+    <% const netAfterPublish = rows.length - pendingDeleteRows.length + pendingAddRows.length; %>
+
+    <div class="layout">
+      <!-- Side A: the live tracklist, with inline removal marks -->
+      <div class="container side-a">
+        <div class="hubs"><div class="hub"></div><div class="hub"></div></div>
+        <%- include('partials/label-strip', {
+          title: 'Tracks',
+          subtitle: `${rows.length} live · ${pendingDeleteRows.length} marked for removal`,
+          sideLetter: 'A',
+        }) %>
+        <p class="lock-hint">Press &ldquo;Start editing&rdquo; above to mark tracks for removal.</p>
+        <% if (rows.length === 0) { %>
+          <p class="hint">No tracks yet &mdash; queue one on Side B.</p>
+        <% } else { %>
+          <div class="table-toolbar">
+            <span>Click <span style="color: var(--text-cream)">&times;</span> to mark a track for removal</span>
+            <input type="text" id="track-filter" class="search" placeholder="Filter tracks&hellip;">
+          </div>
+          <div class="t-head"><span></span><span>Track</span><span>By</span><span>Added</span><span></span></div>
+          <div class="scroll-wrap" data-scroll-fade>
+            <div class="scroll-fade top"></div>
+            <div class="no-scrollbar track-table-scroll" data-scroll-fade-body data-scroll-a>
+              <% rows.forEach((row, i) => { %>
+                <div class="t-row<%= row.pendingDelete ? ' removing' : '' %>" data-track-name="<%= row.trackName.toLowerCase() %>">
+                  <span class="t-num"><%= String(i + 1).padStart(2, '0') %></span>
+                  <span class="t-title"><%= row.trackName %></span>
+                  <span class="t-by<%= row.addedAt ? '' : ' legacy' %>"><%= row.addedBy %></span>
+                  <span class="t-date<%= row.addedAt ? '' : ' legacy' %>"><%= row.addedAt ? new Date(row.addedAt).toLocaleDateString() : 'legacy' %></span>
+                  <% if (row.pendingDelete) { %>
+                    <form method="POST" action="/tracks/undo-delete" class="inline-form pending-action-form lock-gated">
+                      <input type="hidden" name="filename" value="<%= row.filename %>">
+                      <button type="submit" class="t-action undo" title="Undo removal">&#8634;</button>
+                    </form>
+                  <% } else { %>
+                    <form method="POST" action="/tracks/delete" class="inline-form pending-action-form lock-gated">
+                      <input type="hidden" name="filename" value="<%= row.filename %>">
+                      <button type="submit" class="t-action" title="Mark for removal">&times;</button>
+                    </form>
+                  <% } %>
+                </div>
+              <% }) %>
+            </div>
+            <div class="scroll-fade bottom"></div>
+          </div>
+          <p class="table-footer"><%= rows.length %> track<%= rows.length === 1 ? '' : 's' %> on tape</p>
+        <% } %>
+      </div>
+
+      <!-- Side B: everything pending this batch, both directions -->
+      <div class="container side-b">
+        <div class="hubs"><div class="hub"></div><div class="hub"></div></div>
+        <%- include('partials/label-strip', {
+          title: 'Queue',
+          subtitle: 'Everything pending this batch',
+          sideLetter: 'B',
+        }) %>
+        <p class="lock-hint">Press &ldquo;Start editing&rdquo; above to add or remove tracks.</p>
+        <div class="field">
+          <div class="file-row lock-gated">
+            <input type="file" id="file-picker" accept="audio/*" multiple>
+          </div>
+          <p class="hint" id="file-count">No files selected</p>
+          <p class="file-helper">Each file must convert to under <%= maxTrackFileSizeKb %>KB. Up to <%= maxTracks %> tracks total on the tape.</p>
+        </div>
+        <div class="staged-list" id="staged-list" hidden></div>
+        <p class="error" id="add-queue-error"></p>
+        <button type="button" id="add-to-queue-button" class="btn-secondary lock-gated" disabled>+ Add to queue</button>
+
+        <div class="section-label"><span>Adding</span><span class="tag tag-pending"><%= pendingAddRows.length %></span></div>
+        <% if (pendingAddRows.length === 0) { %>
+          <p class="hint">Nothing queued to add.</p>
+        <% } else { %>
+          <div class="scroll-wrap" data-scroll-fade>
+            <div class="scroll-fade top"></div>
+            <div class="queue-scroll no-scrollbar" data-scroll-fade-body>
+              <% pendingAddRows.forEach((row) => { %>
+                <div class="queue-item" data-pending-add="<%= row.filename %>">
+                  <div class="qi-main">
+                    <div class="qi-title"><%= row.trackName %></div>
+                    <div class="qi-artist">queued by <%= row.addedBy %></div>
+                  </div>
+                  <form method="POST" action="/tracks/delete" class="inline-form pending-action-form lock-gated">
+                    <input type="hidden" name="filename" value="<%= row.filename %>">
+                    <button type="submit" class="qi-remove" title="Cancel this add">&times;</button>
+                  </form>
+                </div>
+              <% }) %>
+            </div>
+            <div class="scroll-fade bottom"></div>
+          </div>
+        <% } %>
+
+        <div class="divider"></div>
+
+        <div class="section-label"><span>Removing</span><span class="tag tag-removing"><%= pendingDeleteRows.length %></span></div>
+        <% if (pendingDeleteRows.length === 0) { %>
+          <p class="hint">Nothing marked for removal.</p>
+        <% } else { %>
+          <div class="scroll-wrap" data-scroll-fade>
+            <div class="scroll-fade top"></div>
+            <div class="queue-scroll no-scrollbar" data-scroll-fade-body>
+              <% pendingDeleteRows.forEach((row) => { %>
+                <div class="queue-item" data-pending-delete="<%= row.filename %>">
+                  <div class="qi-main">
+                    <div class="qi-title strike"><%= row.trackName %></div>
+                    <div class="qi-artist">added by <%= row.addedBy %></div>
+                  </div>
+                  <form method="POST" action="/tracks/undo-delete" class="inline-form pending-action-form lock-gated">
+                    <input type="hidden" name="filename" value="<%= row.filename %>">
+                    <button type="submit" class="qi-undo" title="Undo removal">&#8634;</button>
+                  </form>
+                </div>
+              <% }) %>
+            </div>
+            <div class="scroll-fade bottom"></div>
+          </div>
+        <% } %>
+      </div>
+    </div>
+
+    <div class="batch-bar">
+      <% if (usageInfo) { %>
+        <div class="batch-quota">
+          <div class="batch-quota-track"><div class="batch-quota-fill<%= usageInfo.locked ? ' locked' : '' %>" style="width: <%= Math.min(100, (parseFloat(usageInfo.usageGB) / parseFloat(usageInfo.capGB)) * 100).toFixed(1) %>%"></div></div>
+          <span class="batch-quota-text">
+            <b><%= usageInfo.usageGB %></b>/<%= usageInfo.capGB %>GB this month
+            <% if (usageInfo.locked) { %> &middot; locked<% } else if (usageInfo.publishesRemaining !== null) { %> &middot; ~<%= usageInfo.publishesRemaining %> publish<%= usageInfo.publishesRemaining === 1 ? '' : 'es' %> left<% } %>
+          </span>
+        </div>
+      <% } %>
+      <div class="batch-summary">
+        <span class="add">+<%= pendingAddRows.length %> addition<%= pendingAddRows.length === 1 ? '' : 's' %></span>
+        <span class="rem">&minus;<%= pendingDeleteRows.length %> removal<%= pendingDeleteRows.length === 1 ? '' : 's' %></span>
+        <span class="muted">&rarr; <%= netAfterPublish %> track<%= netAfterPublish === 1 ? '' : 's' %> after publish</span>
+      </div>
+      <% if (isAdmin) { %>
+        <label class="checkbox-label">
+          <input type="checkbox" id="publish-dry-run">
+          Dry run
+        </label>
+      <% } %>
+      <button type="button" id="publish-button" class="lock-gated btn-primary" <%= pendingCount === 0 ? 'disabled' : '' %>>Publish <%= pendingCount %> change<%= pendingCount === 1 ? '' : 's' %></button>
+      <button type="button" id="clear-batch-button" class="link-button lock-gated" <%= pendingCount === 0 ? 'disabled' : '' %>>Clear batch</button>
+      <% if (pendingCount === 0) { %><p class="lock-hint" style="display: block;">Nothing queued yet &mdash; add a track or mark one for removal.</p><% } %>
+      <p class="lock-hint">Press &ldquo;Start editing&rdquo; above before publishing.</p>
+    </div>
+
 <%- include('partials/progress-modal') %>
+    <script src="/scroll-fade.js"></script>
     <script>
       document.querySelectorAll('.pending-action-form').forEach((form) => {
         form.addEventListener('submit', async (e) => {
           e.preventDefault();
-          const confirmMessage = form.dataset.confirm;
-          if (confirmMessage && !confirm(confirmMessage)) return;
-
           const button = form.querySelector('button');
           button.disabled = true;
           try {
@@ -125,6 +183,174 @@
         });
       });
 
+      // ---------- Side A: live filter. No lock-gating — browsing/search
+      // always works regardless of who (if anyone) holds the edit lock. ----------
+      const filterInput = document.getElementById('track-filter');
+      const trackScroll = document.querySelector('[data-scroll-a]');
+      if (filterInput) {
+        filterInput.addEventListener('input', () => {
+          const q = filterInput.value.trim().toLowerCase();
+          document.querySelectorAll('.t-row').forEach((row) => {
+            row.hidden = q.length > 0 && !row.dataset.trackName.includes(q);
+          });
+          if (trackScroll) trackScroll.dispatchEvent(new Event('scroll'));
+        });
+      }
+
+      // ---------- Side B: stage multiple files, one title/artist mini-form
+      // each (guessed from the filename, editable), before queueing them
+      // one at a time against the existing single-file /submit endpoint. ----------
+      const filePicker = document.getElementById('file-picker');
+      const fileCount = document.getElementById('file-count');
+      const stagedList = document.getElementById('staged-list');
+      const addToQueueButton = document.getElementById('add-to-queue-button');
+      const addQueueError = document.getElementById('add-queue-error');
+      let staged = [];
+      let stagedSeq = 0;
+
+      function guessFromFilename(name) {
+        const base = name.replace(/\.[^./]+$/, '');
+        const sep = base.indexOf(' - ');
+        if (sep === -1) return { title: base.trim(), artist: '' };
+        return { title: base.slice(0, sep).trim(), artist: base.slice(sep + 3).trim() };
+      }
+
+      function renderStaged() {
+        stagedList.innerHTML = '';
+        staged.forEach((item) => {
+          const row = document.createElement('div');
+          row.className = 'staged-item';
+
+          const fields = document.createElement('div');
+          fields.className = 'staged-fields';
+
+          const titleLabel = document.createElement('label');
+          titleLabel.textContent = 'Title';
+          const titleInput = document.createElement('input');
+          titleInput.type = 'text';
+          titleInput.className = 'staged-title';
+          titleInput.value = item.guess.title;
+          titleLabel.appendChild(titleInput);
+
+          const artistLabel = document.createElement('label');
+          artistLabel.textContent = 'Artist';
+          const artistInput = document.createElement('input');
+          artistInput.type = 'text';
+          artistInput.className = 'staged-artist';
+          artistInput.value = item.guess.artist;
+          artistLabel.appendChild(artistInput);
+
+          fields.appendChild(titleLabel);
+          fields.appendChild(artistLabel);
+
+          const removeButton = document.createElement('button');
+          removeButton.type = 'button';
+          removeButton.className = 'qi-remove';
+          removeButton.title = 'Remove from selection';
+          removeButton.innerHTML = '&times;';
+          removeButton.addEventListener('click', () => {
+            staged = staged.filter((s) => s.id !== item.id);
+            renderStaged();
+          });
+
+          row.appendChild(fields);
+          row.appendChild(removeButton);
+          stagedList.appendChild(row);
+        });
+
+        fileCount.textContent = staged.length === 0 ? 'No files selected' : `${staged.length} file${staged.length === 1 ? '' : 's'} selected`;
+        stagedList.hidden = staged.length === 0;
+        addToQueueButton.disabled = staged.length === 0;
+      }
+
+      if (filePicker) {
+        filePicker.addEventListener('change', () => {
+          Array.from(filePicker.files).forEach((file) => {
+            staged.push({ file, guess: guessFromFilename(file.name), id: ++stagedSeq });
+          });
+          filePicker.value = '';
+          renderStaged();
+        });
+      }
+
+      if (addToQueueButton) {
+        addToQueueButton.addEventListener('click', async () => {
+          addQueueError.textContent = '';
+          addToQueueButton.disabled = true;
+          const rows = Array.from(stagedList.children);
+          let stoppedAt = -1;
+
+          for (let i = 0; i < staged.length; i++) {
+            const item = staged[i];
+            const row = rows[i];
+            const title = row.querySelector('.staged-title').value.trim();
+            const artist = row.querySelector('.staged-artist').value.trim();
+            addToQueueButton.textContent = `Queueing ${i + 1} of ${staged.length}…`;
+
+            const formData = new FormData();
+            formData.append('audio', item.file);
+            formData.append('title', title);
+            formData.append('artist', artist);
+
+            try {
+              const response = await fetch('/submit', { method: 'POST', body: formData });
+              const data = await response.json();
+              if (!response.ok) throw new Error(data.error || 'Something went wrong.');
+            } catch (err) {
+              addQueueError.textContent = `"${item.file.name}": ${err.message}`;
+              stoppedAt = i;
+              break;
+            }
+          }
+
+          addToQueueButton.textContent = '+ Add to queue';
+
+          if (stoppedAt === -1) {
+            window.location.reload();
+            return;
+          }
+
+          // Partial failure: the ones before stoppedAt are safely queued
+          // server-side already, so drop them locally. Keep the failed one
+          // and everything after it staged (with their File objects still
+          // intact) so they can be fixed and retried without re-choosing
+          // files, which a browser can't do programmatically.
+          staged = staged.slice(stoppedAt);
+          renderStaged();
+        });
+      }
+
+      // ---------- Batch bar: Clear batch ----------
+      const clearBatchButton = document.getElementById('clear-batch-button');
+      if (clearBatchButton) {
+        clearBatchButton.addEventListener('click', async () => {
+          clearBatchButton.disabled = true;
+          try {
+            const pendingAdds = Array.from(document.querySelectorAll('[data-pending-add]')).map((el) => el.dataset.pendingAdd);
+            const pendingDeletes = Array.from(document.querySelectorAll('[data-pending-delete]')).map((el) => el.dataset.pendingDelete);
+            for (const filename of pendingAdds) {
+              await fetch('/tracks/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ filename }),
+              });
+            }
+            for (const filename of pendingDeletes) {
+              await fetch('/tracks/undo-delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ filename }),
+              });
+            }
+            window.location.reload();
+          } catch (err) {
+            alert(err.message);
+            clearBatchButton.disabled = false;
+          }
+        });
+      }
+
+      // ---------- Publish ----------
       const publishButton = document.getElementById('publish-button');
       if (publishButton) {
         publishButton.addEventListener('click', async () => {
