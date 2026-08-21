@@ -139,7 +139,7 @@
     setTimeout(startCurrentFill, CATCHUP_MS);
   }
 
-  window.openProgressModal = function ({ jobId, type, dryRun }) {
+  window.openProgressModal = function ({ jobId, dryRun }) {
     const overlay = document.getElementById("progress-modal");
     const title = document.getElementById("progress-modal-title");
     const stageLabel = document.getElementById("progress-modal-stage");
@@ -149,8 +149,7 @@
     const segments = window.PROGRESS_SEGMENTS[dryRun ? "dryRun" : "real"];
     renderBar(segments);
 
-    const verb = type === "delete" ? "Removing track" : "Adding track";
-    title.textContent = dryRun ? `${verb} (dry run)` : verb;
+    title.textContent = dryRun ? "Publishing (dry run)" : "Publishing";
     stageLabel.textContent = "Starting…";
     note.textContent = "";
     cancelButton.hidden = false;

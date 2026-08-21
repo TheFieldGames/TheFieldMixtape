@@ -5,10 +5,11 @@ import * as jobs from "../src/jobs.js";
 import { THUNDERSTORE_URL } from "../src/publish.js";
 
 /**
- * Backs the progress modal: POST /submit and POST /tracks/delete now kick a
- * job off and return {jobId} immediately instead of awaiting the whole
- * pipeline inline. These three routes are what the client polls/streams/
- * acts on afterward — see public/progress-modal.js for the browser side.
+ * Backs the progress modal: POST /tracks/publish (the only route that
+ * actually touches git/tcli) kicks a job off and returns {jobId}
+ * immediately instead of awaiting the whole pipeline inline. These three
+ * routes are what the client streams/acts on afterward — see
+ * public/progress-modal.js for the browser side.
  */
 export function createJobsRouter() {
   const router = Router();
@@ -71,7 +72,6 @@ export function createJobsRouter() {
         success: false,
         error: "This job's result is no longer available (it may have expired) — try again.",
         committedButNotPublished: false,
-        action: "add",
         dryRun: false,
         thunderstoreUrl: THUNDERSTORE_URL,
       });
@@ -88,7 +88,6 @@ export function createJobsRouter() {
         success: true,
         error: null,
         committedButNotPublished: false,
-        action: job.type,
         ...job.result,
       });
     }
@@ -98,7 +97,6 @@ export function createJobsRouter() {
       success: false,
       error: job.error?.message || "Something went wrong.",
       committedButNotPublished: job.error?.committedButNotPublished || false,
-      action: job.type,
       dryRun: job.dryRun,
       thunderstoreUrl: THUNDERSTORE_URL,
     });

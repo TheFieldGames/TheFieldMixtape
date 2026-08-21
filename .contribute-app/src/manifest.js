@@ -109,6 +109,79 @@ export async function backfillLegacyTracks(client, bucket, trackNames, { now = n
   return updated;
 }
 
+/** Records a newly-queued track add. Unlike recordTrackAdded, this doesn't
+ * mean the track is live yet — the real R2 object lives under
+ * storage.PENDING_PREFIX until a Publish action promotes it. `addedAt`
+ * reflects when it was queued (there's no second, separate "went live"
+ * timestamp — the manifest only ever tracks one addedAt per track). */
+export async function queueTrackAdded(client, bucket, filename, addedBy, { now = new Date() } = {}) {
+  const manifest = await getManifest(client, bucket);
+  const updated = {
+    ...manifest,
+    tracks: {
+      ...manifest.tracks,
+      [filename]: { addedBy, addedAt: now.toISOString(), status: "pending" },
+    },
+  };
+  await saveManifest(client, bucket, updated);
+  return updated;
+}
+
+/** Flags a currently-live track for removal at the next publish — doesn't
+ * touch R2 or the track's own manifest entry yet (mirrors the plan's
+ * "mis-click is reversible from the queue view before it's live" design).
+ * Idempotent: a filename already queued for deletion isn't duplicated. */
+export async function queueTrackDeletion(client, bucket, filename) {
+  const manifest = await getManifest(client, bucket);
+  if (manifest.pendingDeletes.includes(filename)) return manifest;
+  const updated = { ...manifest, pendingDeletes: [...manifest.pendingDeletes, filename] };
+  await saveManifest(client, bucket, updated);
+  return updated;
+}
+
+/** Undoes a queued deletion (removes `filename` from pendingDeletes,
+ * leaving its still-live manifest entry and R2 object untouched). A no-op
+ * if it wasn't queued for deletion to begin with. */
+export async function cancelPendingDeletion(client, bucket, filename) {
+  const manifest = await getManifest(client, bucket);
+  if (!manifest.pendingDeletes.includes(filename)) return manifest;
+  const updated = { ...manifest, pendingDeletes: manifest.pendingDeletes.filter((f) => f !== filename) };
+  await saveManifest(client, bucket, updated);
+  return updated;
+}
+
+/**
+ * Applies the outcome of a successful Publish batch in one read-modify-
+ * write: every filename in `publishedFilenames` (tracks that were
+ * "pending" and just got promoted to the real R2 prefix) flips to
+ * `status: "live"`, keeping its original addedBy/addedAt; every filename in
+ * `deletedFilenames` (tracks that were queued for deletion and just got
+ * removed from R2) has its manifest entry dropped entirely and is cleared
+ * from pendingDeletes. Only ever called after the real git/tcli work has
+ * already succeeded — see processPublish in publish.js.
+ */
+export async function applyPublishBatch(client, bucket, { publishedFilenames = [], deletedFilenames = [] } = {}) {
+  const manifest = await getManifest(client, bucket);
+  const updatedTracks = { ...manifest.tracks };
+
+  for (const filename of publishedFilenames) {
+    const existing = updatedTracks[filename];
+    if (existing) updatedTracks[filename] = { ...existing, status: "live" };
+  }
+  for (const filename of deletedFilenames) {
+    delete updatedTracks[filename];
+  }
+
+  const deletedSet = new Set(deletedFilenames);
+  const updated = {
+    ...manifest,
+    tracks: updatedTracks,
+    pendingDeletes: manifest.pendingDeletes.filter((f) => !deletedSet.has(f)),
+  };
+  await saveManifest(client, bucket, updated);
+  return updated;
+}
+
 /**
  * Applies a batch of manually-supplied corrections (real addedBy/addedAt
  * values for tracks that were backfilled as LEGACY_ADDED_BY) in a single

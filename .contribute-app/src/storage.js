@@ -5,6 +5,7 @@ import {
   PutObjectCommand,
   HeadObjectCommand,
   DeleteObjectCommand,
+  CopyObjectCommand,
 } from "@aws-sdk/client-s3";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
@@ -22,6 +23,14 @@ export const TRACK_PREFIX = "my mixtape/";
 // here is structurally invisible to the real track library — no extra
 // filtering logic needed to keep dry runs from polluting real submissions.
 export const DRY_RUN_PREFIX = "dry-run/";
+
+// A queued (not-yet-published) track add lives here, not under TRACK_PREFIX
+// — same isolation reasoning as DRY_RUN_PREFIX: listTracks()/
+// downloadAllTracks() must never see a pending track, or it would leak into
+// the published package (or this app's own /tracks display of "live"
+// tracks) before anyone actually hit Publish. promotePendingTrack moves it
+// to the real prefix once a Publish batch actually goes through.
+export const PENDING_PREFIX = "pending/";
 
 export function createR2Client({ accountId, accessKeyId, secretAccessKey }) {
   return new S3Client({
@@ -84,9 +93,9 @@ export async function getTotalTrackBytes(client, bucket) {
   return objects.reduce((sum, o) => sum + o.size, 0);
 }
 
-export async function trackExists(client, bucket, filename) {
+export async function trackExists(client, bucket, filename, { prefix = TRACK_PREFIX } = {}) {
   try {
-    await client.send(new HeadObjectCommand({ Bucket: bucket, Key: keyForFilename(filename) }));
+    await client.send(new HeadObjectCommand({ Bucket: bucket, Key: keyForFilename(filename, prefix) }));
     return true;
   } catch (err) {
     if (err?.$metadata?.httpStatusCode === 404 || err?.name === "NotFound") return false;
@@ -96,6 +105,29 @@ export async function trackExists(client, bucket, filename) {
 
 export async function deleteTrack(client, bucket, filename, { prefix = TRACK_PREFIX } = {}) {
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: keyForFilename(filename, prefix) }));
+}
+
+/**
+ * Moves a queued track from PENDING_PREFIX to the real TRACK_PREFIX — a
+ * server-side copy (R2 handles this internally, no re-upload of the actual
+ * bytes) followed by deleting the pending copy. Used by a Publish batch to
+ * turn a "pending" manifest entry into a real, live track.
+ *
+ * S3's CopySource must be `<bucket>/<url-encoded key>`, but a naive
+ * encodeURIComponent also escapes the "/" inside PENDING_PREFIX itself,
+ * corrupting the path — so only the filename portion is encoded.
+ */
+export async function promotePendingTrack(client, bucket, filename) {
+  const sourceKey = keyForFilename(filename, PENDING_PREFIX);
+  const destKey = keyForFilename(filename, TRACK_PREFIX);
+  await client.send(
+    new CopyObjectCommand({
+      Bucket: bucket,
+      CopySource: `${bucket}/${PENDING_PREFIX}${encodeURIComponent(filename)}`,
+      Key: destKey,
+    })
+  );
+  await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: sourceKey }));
 }
 
 export async function uploadTrack(client, bucket, filename, filePath, { prefix = TRACK_PREFIX } = {}) {
@@ -108,6 +140,14 @@ export async function uploadTrack(client, bucket, filename, filePath, { prefix =
       ContentType: "audio/ogg",
     })
   );
+}
+
+/** Downloads a single object to an exact local path — used by a dry-run
+ * Publish preview to pull a queued (pending-prefix) track's real bytes down
+ * for the build preview, since dry runs never touch the real R2 prefix. */
+export async function downloadTrackTo(client, bucket, filename, destPath, { prefix = TRACK_PREFIX } = {}) {
+  const resp = await client.send(new GetObjectCommand({ Bucket: bucket, Key: keyForFilename(filename, prefix) }));
+  await pipeline(Readable.from(resp.Body), fs.createWriteStream(destPath));
 }
 
 /**

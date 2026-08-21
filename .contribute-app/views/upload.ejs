@@ -1,34 +1,22 @@
 <%- include('partials/header') %>
-  <h1>Add a track</h1>
+  <h1>Queue a track</h1>
   <p class="subtitle">
     Logged in as <strong><%= displayName %></strong>
     &mdash;
-    <a href="/tracks">view tracks</a>
+    <a href="/tracks">view tracks &amp; publish</a>
     &mdash;
     <form method="POST" action="/logout" class="inline-form">
       <button type="submit" class="link-button">log out</button>
     </form>
   </p>
   <div class="info-panel">
-    <p><a href="<%= thunderstoreUrl %>" target="_blank" rel="noopener">View the current mixtape on Thunderstore</a></p>
     <p>Up to <%= maxTracks %> tracks total, each under <%= maxTrackFileSizeKb %>KB once converted.</p>
-    <% if (usageInfo) { %>
-      <% if (usageInfo.locked) { %>
-        <p class="warning">
-          Monthly publish limit reached (<%= usageInfo.usageGB %>GB of <%= usageInfo.capGB %>GB used) &mdash;
-          real publishes are locked until next month. Dry runs still work.
-        </p>
-      <% } else { %>
-        <p>
-          <%= usageInfo.usageGB %>GB of <%= usageInfo.capGB %>GB used this month<% if (usageInfo.publishesRemaining !== null) { %>
-          &mdash; about <%= usageInfo.publishesRemaining %> more publish<%= usageInfo.publishesRemaining === 1 ? '' : 'es' %> left at the current mixtape size<% } %>.
-        </p>
-      <% } %>
-    <% } %>
+    <p class="hint">Queueing is fast and doesn't publish anything &mdash; review your changes and hit Publish from the tracks page whenever you're ready.</p>
   </div>
   <% if (error) { %>
     <p class="error" id="submit-error"><%= error %></p>
   <% } %>
+  <p class="success" id="submit-success" hidden></p>
   <form method="POST" action="/submit" enctype="multipart/form-data" id="upload-form">
     <label>
       Audio file
@@ -42,31 +30,20 @@
       Artist
       <input type="text" name="artist" required>
     </label>
-    <% if (isAdmin) { %>
-      <label class="checkbox-label">
-        <input type="checkbox" name="dryRun" id="dry-run-checkbox">
-        Dry run
-      </label>
-      <p class="hint">
-        Tests conversion, upload, and packaging for real, but stops before actually
-        publishing to Thunderstore &mdash; nothing goes live.
-      </p>
-    <% } %>
-    <button type="submit" id="submit-button">Add to mixtape</button>
+    <button type="submit" id="submit-button">Add to queue</button>
   </form>
-<%- include('partials/progress-modal') %>
   <script>
     document.getElementById('upload-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const form = e.target;
-      const dryRunCheckbox = document.getElementById('dry-run-checkbox');
-      const isDryRun = dryRunCheckbox ? dryRunCheckbox.checked : false;
       const button = document.getElementById('submit-button');
-      const existingError = document.getElementById('submit-error');
-      if (existingError) existingError.remove();
+      const errorEl = document.getElementById('submit-error');
+      const successEl = document.getElementById('submit-success');
+      if (errorEl) errorEl.remove();
+      successEl.hidden = true;
 
       button.disabled = true;
-      button.textContent = isDryRun ? 'Starting dry run...' : 'Starting...';
+      button.textContent = 'Queueing...';
 
       try {
         const response = await fetch('/submit', { method: 'POST', body: new FormData(form) });
@@ -74,15 +51,18 @@
         if (!response.ok) {
           throw new Error(data.error || 'Something went wrong.');
         }
-        openProgressModal({ jobId: data.jobId, type: 'add', dryRun: isDryRun });
+        successEl.textContent = `Queued: ${data.trackName}`;
+        successEl.hidden = false;
+        form.reset();
       } catch (err) {
         const p = document.createElement('p');
         p.className = 'error';
         p.id = 'submit-error';
         p.textContent = err.message;
         form.insertAdjacentElement('beforebegin', p);
+      } finally {
         button.disabled = false;
-        button.textContent = 'Add to mixtape';
+        button.textContent = 'Add to queue';
       }
     });
   </script>

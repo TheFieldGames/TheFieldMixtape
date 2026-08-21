@@ -7,6 +7,7 @@ import path from "node:path";
 import {
   TRACK_PREFIX,
   DRY_RUN_PREFIX,
+  PENDING_PREFIX,
   keyForFilename,
   trackNameFromKey,
   listTrackKeys,
@@ -14,6 +15,8 @@ import {
   trackExists,
   uploadTrack,
   deleteTrack,
+  promotePendingTrack,
+  downloadTrackTo,
   downloadAllTracks,
   getTotalTrackBytes,
 } from "../src/storage.js";
@@ -138,6 +141,18 @@ test("trackExists re-throws unexpected (non-404) errors instead of swallowing th
   await assert.rejects(trackExists(fakeClient, "test-bucket", "Whatever.ogg"), /permission denied/);
 });
 
+test("trackExists checks the pending prefix instead of the real one when given { prefix: PENDING_PREFIX }", async () => {
+  let sentCommand = null;
+  const fakeClient = {
+    async send(command) {
+      sentCommand = command;
+      return {};
+    },
+  };
+  await trackExists(fakeClient, "test-bucket", "Queued.ogg", { prefix: PENDING_PREFIX });
+  assert.equal(sentCommand.input.Key, "pending/Queued.ogg");
+});
+
 test("uploadTrack sends the file's real bytes under the my mixtape/ prefixed key", async (t) => {
   const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "storage-test-"));
   t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
@@ -207,6 +222,78 @@ test("deleteTrack respects a dry-run prefix override, keeping it out of the real
   await deleteTrack(fakeClient, "test-bucket", "Old Track - Someone.ogg", { prefix: DRY_RUN_PREFIX });
 
   assert.equal(sentCommand.input.Key, "dry-run/Old Track - Someone.ogg");
+});
+
+test("promotePendingTrack copies from the pending prefix to the real prefix, then deletes the pending copy", async () => {
+  const commands = [];
+  const fakeClient = {
+    async send(command) {
+      commands.push(command);
+      return {};
+    },
+  };
+
+  await promotePendingTrack(fakeClient, "test-bucket", "New Track - Someone.ogg");
+
+  assert.equal(commands.length, 2);
+  assert.equal(commands[0].constructor.name, "CopyObjectCommand");
+  assert.equal(commands[0].input.Bucket, "test-bucket");
+  assert.equal(commands[0].input.Key, "my mixtape/New Track - Someone.ogg");
+  assert.equal(commands[0].input.CopySource, "test-bucket/pending/New%20Track%20-%20Someone.ogg");
+  assert.equal(commands[1].constructor.name, "DeleteObjectCommand");
+  assert.equal(commands[1].input.Key, "pending/New Track - Someone.ogg");
+});
+
+test("promotePendingTrack correctly encodes filenames with parentheses/commas in CopySource without corrupting the pending/ prefix", async () => {
+  const commands = [];
+  const fakeClient = {
+    async send(command) {
+      commands.push(command);
+      return {};
+    },
+  };
+
+  await promotePendingTrack(fakeClient, "test-bucket", "Bangarang (Ft. Sirah), Pt. 2.ogg");
+
+  assert.equal(commands[0].input.CopySource, "test-bucket/pending/Bangarang%20(Ft.%20Sirah)%2C%20Pt.%202.ogg");
+  assert.ok(!commands[0].input.CopySource.includes("%2Fpending"), "the pending/ prefix's slash must stay a literal slash, not get encoded");
+});
+
+test("downloadTrackTo writes the real object bytes to an exact local path", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "storage-test-dltrack-"));
+  t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
+  const destPath = path.join(tmpDir, "downloaded.ogg");
+
+  let sentCommand = null;
+  const fakeClient = {
+    async send(command) {
+      sentCommand = command;
+      return { Body: asyncIterableFromBuffer(Buffer.from("real bytes")) };
+    },
+  };
+
+  await downloadTrackTo(fakeClient, "test-bucket", "Song - Artist.ogg", destPath);
+
+  assert.equal(sentCommand.input.Key, "my mixtape/Song - Artist.ogg");
+  assert.equal(await fsp.readFile(destPath, "utf8"), "real bytes");
+});
+
+test("downloadTrackTo respects a prefix override (e.g. the pending prefix for a dry-run publish preview)", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "storage-test-dltrack-pending-"));
+  t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
+  const destPath = path.join(tmpDir, "downloaded.ogg");
+
+  let sentCommand = null;
+  const fakeClient = {
+    async send(command) {
+      sentCommand = command;
+      return { Body: asyncIterableFromBuffer(Buffer.from("pending bytes")) };
+    },
+  };
+
+  await downloadTrackTo(fakeClient, "test-bucket", "Queued - Track.ogg", destPath, { prefix: PENDING_PREFIX });
+
+  assert.equal(sentCommand.input.Key, "pending/Queued - Track.ogg");
 });
 
 test("downloadAllTracks writes every listed key's content to destDir under its basename, in parallel", async (t) => {

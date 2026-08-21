@@ -1,6 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MANIFEST_KEY, LEGACY_ADDED_BY, getManifest, recordTrackAdded, removeTrack, backfillLegacyTracks, applyManualCorrections } from "../src/manifest.js";
+import {
+  MANIFEST_KEY,
+  LEGACY_ADDED_BY,
+  getManifest,
+  recordTrackAdded,
+  removeTrack,
+  backfillLegacyTracks,
+  applyManualCorrections,
+  queueTrackAdded,
+  queueTrackDeletion,
+  cancelPendingDeletion,
+  applyPublishBatch,
+} from "../src/manifest.js";
 
 function asyncIterableFromString(str) {
   return {
@@ -257,4 +269,105 @@ test("removeTrack is a no-op (no write) when the filename has no manifest entry 
 
   assert.equal(putCalled, false);
   assert.ok("Other - Artist.ogg" in updated.tracks);
+});
+
+test("queueTrackAdded records a pending-status entry, distinct from a live one", async () => {
+  const fakeClient = {
+    async send(command) {
+      if (command.constructor.name === "GetObjectCommand") throw notFoundError();
+      return {};
+    },
+  };
+  const now = new Date("2026-08-22T12:00:00.000Z");
+  const updated = await queueTrackAdded(fakeClient, "bucket", "New - Track.ogg", "Rob", { now });
+  assert.deepEqual(updated.tracks["New - Track.ogg"], { addedBy: "Rob", addedAt: now.toISOString(), status: "pending" });
+});
+
+test("queueTrackDeletion adds the filename to pendingDeletes, and is idempotent", async () => {
+  const calls = [];
+  const fakeClient = {
+    async send(command) {
+      if (command.constructor.name === "GetObjectCommand") {
+        return { Body: asyncIterableFromString(JSON.stringify({ tracks: {}, pendingDeletes: ["Already - Queued.ogg"], publishLog: [] })) };
+      }
+      calls.push(JSON.parse(command.input.Body));
+      return {};
+    },
+  };
+
+  const updated = await queueTrackDeletion(fakeClient, "bucket", "Old - Track.ogg");
+  assert.deepEqual(updated.pendingDeletes, ["Already - Queued.ogg", "Old - Track.ogg"]);
+  assert.equal(calls.length, 1);
+
+  const noopUpdated = await queueTrackDeletion(fakeClient, "bucket", "Already - Queued.ogg");
+  assert.deepEqual(noopUpdated.pendingDeletes, ["Already - Queued.ogg"]);
+  assert.equal(calls.length, 1, "queueing an already-queued deletion doesn't write again");
+});
+
+test("cancelPendingDeletion removes the filename from pendingDeletes, leaving the track's own entry alone", async () => {
+  const fakeClient = fakeClientReturning({
+    tracks: { "Old - Track.ogg": { addedBy: "Rob", addedAt: "2026-08-01T00:00:00.000Z", status: "live" } },
+    pendingDeletes: ["Old - Track.ogg", "Other - Track.ogg"],
+    publishLog: [],
+  });
+  const updated = await cancelPendingDeletion(fakeClient, "bucket", "Old - Track.ogg");
+  assert.deepEqual(updated.pendingDeletes, ["Other - Track.ogg"]);
+  assert.deepEqual(updated.tracks["Old - Track.ogg"], { addedBy: "Rob", addedAt: "2026-08-01T00:00:00.000Z", status: "live" });
+});
+
+test("cancelPendingDeletion is a no-op (no write) when the filename wasn't queued for deletion", async () => {
+  let putCalled = false;
+  const fakeClient = {
+    async send(command) {
+      if (command.constructor.name === "PutObjectCommand") {
+        putCalled = true;
+        return {};
+      }
+      return { Body: asyncIterableFromString(JSON.stringify({ tracks: {}, pendingDeletes: ["Other.ogg"], publishLog: [] })) };
+    },
+  };
+  await cancelPendingDeletion(fakeClient, "bucket", "Not - Queued.ogg");
+  assert.equal(putCalled, false);
+});
+
+test("applyPublishBatch flips published filenames to live (keeping addedBy/addedAt) and drops deleted filenames, in one write", async () => {
+  const calls = [];
+  const fakeClient = {
+    async send(command) {
+      if (command.constructor.name === "GetObjectCommand") {
+        return {
+          Body: asyncIterableFromString(
+            JSON.stringify({
+              tracks: {
+                "New - Track.ogg": { addedBy: "Rob", addedAt: "2026-08-22T12:00:00.000Z", status: "pending" },
+                "Old - Track.ogg": { addedBy: "Dan", addedAt: "2026-08-01T00:00:00.000Z", status: "live" },
+                "Untouched - Track.ogg": { addedBy: "Alex", addedAt: "2026-08-05T00:00:00.000Z", status: "live" },
+              },
+              pendingDeletes: ["Old - Track.ogg"],
+              publishLog: [],
+            })
+          ),
+        };
+      }
+      calls.push(["put", JSON.parse(command.input.Body)]);
+      return {};
+    },
+  };
+
+  const updated = await applyPublishBatch(fakeClient, "bucket", {
+    publishedFilenames: ["New - Track.ogg"],
+    deletedFilenames: ["Old - Track.ogg"],
+  });
+
+  assert.deepEqual(updated.tracks["New - Track.ogg"], { addedBy: "Rob", addedAt: "2026-08-22T12:00:00.000Z", status: "live" });
+  assert.ok(!("Old - Track.ogg" in updated.tracks));
+  assert.deepEqual(updated.tracks["Untouched - Track.ogg"], { addedBy: "Alex", addedAt: "2026-08-05T00:00:00.000Z", status: "live" });
+  assert.deepEqual(updated.pendingDeletes, [], "the just-processed deletion is cleared from pendingDeletes");
+  assert.equal(calls.length, 1, "writes exactly once for the whole batch");
+});
+
+test("applyPublishBatch tolerates an empty batch (nothing published or deleted)", async () => {
+  const fakeClient = fakeClientReturning({ tracks: {}, pendingDeletes: [], publishLog: [] });
+  const updated = await applyPublishBatch(fakeClient, "bucket", {});
+  assert.deepEqual(updated, { tracks: {}, pendingDeletes: [], publishLog: [] });
 });

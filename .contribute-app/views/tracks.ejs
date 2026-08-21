@@ -10,11 +10,61 @@
   <% if (error) { %>
     <p class="error"><%= error %></p>
   <% } else { %>
-    <% if (isAdmin) { %>
-      <label class="checkbox-label">
-        <input type="checkbox" id="global-dry-run">
-        Dry run deletions (test only &mdash; nothing is actually removed)
-      </label>
+    <% const pendingCount = pendingAddRows.length + pendingDeleteRows.length; %>
+    <% if (pendingCount > 0) { %>
+      <div class="info-panel">
+        <p><strong><%= pendingCount %> pending change<%= pendingCount === 1 ? '' : 's' %></strong></p>
+        <% if (pendingAddRows.length > 0) { %>
+          <p>Queued to add:</p>
+          <ul class="pending-list">
+            <% pendingAddRows.forEach((row) => { %>
+              <li>
+                <%= row.trackName %> <span class="hint">(queued by <%= row.addedBy %>)</span>
+                <form method="POST" action="/tracks/delete" class="inline-form pending-action-form" data-confirm='Cancel queuing "<%= row.trackName %>"? It will never be published.'>
+                  <input type="hidden" name="filename" value="<%= row.filename %>">
+                  <button type="submit" class="link-button delete-button">cancel</button>
+                </form>
+              </li>
+            <% }) %>
+          </ul>
+        <% } %>
+        <% if (pendingDeleteRows.length > 0) { %>
+          <p>Queued to remove:</p>
+          <ul class="pending-list">
+            <% pendingDeleteRows.forEach((row) => { %>
+              <li>
+                <%= row.trackName %>
+                <form method="POST" action="/tracks/undo-delete" class="inline-form pending-action-form">
+                  <input type="hidden" name="filename" value="<%= row.filename %>">
+                  <button type="submit" class="link-button">undo</button>
+                </form>
+              </li>
+            <% }) %>
+          </ul>
+        <% } %>
+        <% if (usageInfo) { %>
+          <% if (usageInfo.locked) { %>
+            <p class="warning">
+              Monthly publish limit reached (<%= usageInfo.usageGB %>GB of <%= usageInfo.capGB %>GB used) &mdash;
+              real publishes are locked until next month. Dry runs still work.
+            </p>
+          <% } else { %>
+            <p>
+              <%= usageInfo.usageGB %>GB of <%= usageInfo.capGB %>GB used this month<% if (usageInfo.publishesRemaining !== null) { %>
+              &mdash; about <%= usageInfo.publishesRemaining %> more publish<%= usageInfo.publishesRemaining === 1 ? '' : 'es' %> left at the current mixtape size<% } %>.
+            </p>
+          <% } %>
+        <% } %>
+        <% if (isAdmin) { %>
+          <label class="checkbox-label">
+            <input type="checkbox" id="publish-dry-run">
+            Dry run
+          </label>
+        <% } %>
+        <button type="button" id="publish-button">Publish <%= pendingCount %> change<%= pendingCount === 1 ? '' : 's' %></button>
+      </div>
+    <% } else { %>
+      <p class="hint">No pending changes.</p>
     <% } %>
     <div class="table-scroll">
       <table class="track-table">
@@ -35,9 +85,8 @@
               <td class="<%= row.addedAt ? '' : 'legacy' %>"><%= row.addedBy %></td>
               <td class="<%= row.addedAt ? '' : 'legacy' %>"><%= row.addedAt ? new Date(row.addedAt).toLocaleDateString() : 'legacy' %></td>
               <td>
-                <form method="POST" action="/tracks/delete" class="inline-form delete-form" data-track-name="<%= row.trackName %>">
+                <form method="POST" action="/tracks/delete" class="inline-form pending-action-form" data-confirm='Queue "<%= row.trackName %>" for removal? It will be removed from the mixtape the next time someone publishes.'>
                   <input type="hidden" name="filename" value="<%= row.filename %>">
-                  <input type="hidden" name="dryRun" value="">
                   <button type="submit" class="link-button delete-button">delete</button>
                 </form>
               </td>
@@ -49,37 +98,56 @@
     <p class="hint"><%= rows.length %> track<%= rows.length === 1 ? '' : 's' %> total.</p>
 <%- include('partials/progress-modal') %>
     <script>
-      document.querySelectorAll('.delete-form').forEach((form) => {
+      document.querySelectorAll('.pending-action-form').forEach((form) => {
         form.addEventListener('submit', async (e) => {
           e.preventDefault();
-          const dryRunCheckbox = document.getElementById('global-dry-run');
-          const isDryRun = dryRunCheckbox ? dryRunCheckbox.checked : false;
+          const confirmMessage = form.dataset.confirm;
+          if (confirmMessage && !confirm(confirmMessage)) return;
 
-          const trackName = form.dataset.trackName;
-          const confirmMessage = isDryRun
-            ? `Run a dry-run delete of "${trackName}"? Nothing will actually be removed.`
-            : `Really delete "${trackName}"? This publishes a new version of the mixtape without it.`;
-          if (!confirm(confirmMessage)) return;
-
-          document.querySelectorAll('.delete-button').forEach((btn) => { btn.disabled = true; });
-
+          const button = form.querySelector('button');
+          button.disabled = true;
           try {
-            const response = await fetch('/tracks/delete', {
+            const response = await fetch(form.action, {
               method: 'POST',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams({ filename: form.querySelector('input[name="filename"]').value, dryRun: isDryRun ? 'on' : '' }),
+              body: new URLSearchParams(new FormData(form)),
             });
             const data = await response.json();
-            if (!response.ok) {
-              throw new Error(data.error || 'Something went wrong.');
-            }
-            openProgressModal({ jobId: data.jobId, type: 'delete', dryRun: isDryRun });
+            if (!response.ok) throw new Error(data.error || 'Something went wrong.');
+            window.location.reload();
           } catch (err) {
             alert(err.message);
-            document.querySelectorAll('.delete-button').forEach((btn) => { btn.disabled = false; });
+            button.disabled = false;
           }
         });
       });
+
+      const publishButton = document.getElementById('publish-button');
+      if (publishButton) {
+        publishButton.addEventListener('click', async () => {
+          const dryRunCheckbox = document.getElementById('publish-dry-run');
+          const isDryRun = dryRunCheckbox ? dryRunCheckbox.checked : false;
+          const confirmMessage = isDryRun
+            ? 'Run a dry-run publish? Nothing will actually go live.'
+            : 'Publish all pending changes? This updates the live mixtape.';
+          if (!confirm(confirmMessage)) return;
+
+          publishButton.disabled = true;
+          try {
+            const response = await fetch('/tracks/publish', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ dryRun: isDryRun ? 'on' : '' }),
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Something went wrong.');
+            openProgressModal({ jobId: data.jobId, dryRun: isDryRun });
+          } catch (err) {
+            alert(err.message);
+            publishButton.disabled = false;
+          }
+        });
+      }
     </script>
   <% } %>
 <%- include('partials/footer') %>
