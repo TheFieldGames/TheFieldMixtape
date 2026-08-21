@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>The Field Mixtape — queue concept</title>
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --shell: rgba(30,28,29,0.88);
+    --shell-solid: #221F21;
+    --shell-light: #46434A;
+    --shell-window: #17151680;
+    --label-cream: #F2ECDD;
+    --stripe-orange: #D98B3E;
+    --stripe-red: #B23A2E;
+    --accent-blue: #6E93B8;
+    --text-cream: #F5F0E6;
+    --text-muted: rgba(245,240,230,0.62);
+    --pending-amber: #D9A441;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; font-family: 'Inter', sans-serif; }
+  .page-title {
+    text-align: center;
+    color: #fff;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.85;
+    padding: 14px 0;
+    background: #1a1a1a;
+  }
+
+  /* ---------- Desktop scene with real bg, always present ---------- */
+  .scene {
+    background-image: url('beach-bg-desktop.jpg');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    min-height: 100vh;
+    padding: 60px 24px;
+    display: flex;
+    gap: 32px;
+    justify-content: center;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .cassette {
+    width: 400px;
+    background: var(--shell);
+    backdrop-filter: blur(6px);
+    border-radius: 18px;
+    padding: 22px 24px 26px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+  .hubs { display: flex; justify-content: space-between; padding: 4px 34px 18px; }
+  .hub {
+    width: 42px; height: 42px; border-radius: 50%;
+    background: rgba(0,0,0,0.4);
+    border: 3px solid var(--shell-light);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .hub::after { content: ""; width: 13px; height: 13px; border-radius: 50%; background: var(--shell-light); }
+
+  .label-strip {
+    background: var(--label-cream);
+    border-radius: 3px;
+    padding: 12px 18px 14px;
+    transform: rotate(-0.5deg);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+    position: relative;
+    margin-bottom: 18px;
+    overflow: hidden;
+  }
+  .label-strip::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 8px;
+    background: linear-gradient(90deg, var(--stripe-orange) 0 70%, var(--stripe-red) 70% 100%);
+  }
+  .label-strip h1 {
+    font-family: 'Kalam', cursive;
+    font-weight: 700;
+    font-size: 24px;
+    color: #2b2822;
+    margin: 0 0 2px;
+    line-height: 1.1;
+  }
+  .label-strip p { font-size: 12px; color: #6b6355; margin: 0; }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 4px;
+  }
+  .tag-pending { background: rgba(217,164,65,0.16); color: var(--pending-amber); border: 1px solid rgba(217,164,65,0.4); }
+  .tag-live { background: rgba(178,58,46,0.16); color: #E8887A; border: 1px solid rgba(178,58,46,0.4); }
+
+  .field { margin-top: 16px; }
+  .field label {
+    display: block; font-size: 11.5px; font-weight: 500; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;
+  }
+  .field input[type=text] {
+    width: 100%; background: rgba(0,0,0,0.35); border: 1px solid rgba(245,240,230,0.14);
+    border-radius: 6px; padding: 9px 12px; color: var(--text-cream); font-size: 13.5px;
+  }
+  .file-row {
+    display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.35);
+    border: 1px dashed rgba(245,240,230,0.25); border-radius: 6px; padding: 12px;
+  }
+  .file-row .choose {
+    background: var(--shell-light); color: var(--text-cream); font-size: 12px; font-weight: 500;
+    padding: 6px 12px; border-radius: 4px;
+  }
+  .file-row .fname { font-size: 12px; color: var(--text-muted); }
+
+  .btn-secondary {
+    width: 100%; margin-top: 18px; padding: 11px; background: transparent;
+    color: var(--text-cream); border: 1px solid rgba(245,240,230,0.3);
+    border-radius: 7px; font-size: 13.5px; font-weight: 600;
+  }
+  .btn-primary {
+    width: 100%; margin-top: 10px; padding: 12px; background: var(--stripe-red);
+    color: var(--text-cream); border: none; border-radius: 7px;
+    font-size: 14px; font-weight: 600;
+  }
+  .btn-primary:disabled, .btn-primary.disabled {
+    background: rgba(178,58,46,0.3); color: rgba(245,240,230,0.4);
+  }
+  .helper { font-size: 11.5px; color: var(--text-muted); margin: 6px 0 0; line-height: 1.5; }
+
+  /* ---------- Queue panel ---------- */
+  .queue-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px dashed rgba(245,240,230,0.14);
+  }
+  .queue-item:last-of-type { border-bottom: none; }
+  .qi-main { flex: 1; min-width: 0; }
+  .qi-title { font-size: 13px; color: var(--text-cream); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .qi-artist { font-size: 11.5px; color: var(--text-muted); }
+  .qi-size { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--text-muted); }
+  .qi-remove {
+    width: 26px; height: 26px; border-radius: 6px; border: 1px solid rgba(245,240,230,0.18);
+    background: transparent; color: var(--text-muted); font-size: 14px; line-height: 1; cursor: pointer;
+  }
+  .qi-remove:hover { background: rgba(178,58,46,0.18); border-color: rgba(178,58,46,0.5); color: #E8887A; }
+
+  .queue-summary {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(245,240,230,0.12);
+    font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--text-muted);
+  }
+  .queue-summary b { color: var(--text-cream); font-weight: 500; }
+
+  /* ---------- Mobile frame ---------- */
+  .mobile-block { padding: 60px 24px; background: #14140f; display: flex; justify-content: center; }
+  .phone {
+    width: 300px; height: 620px; border-radius: 36px; background: #0b0b0b;
+    padding: 10px; box-shadow: 0 30px 60px rgba(0,0,0,0.6);
+  }
+  .phone-screen {
+    width: 100%; height: 100%; border-radius: 28px; overflow: hidden; position: relative;
+    background-image: url('beach-bg-mobile.jpg'); background-size: cover; background-position: center;
+  }
+  .phone-content { position: absolute; inset: 0; overflow-y: auto; padding: 20px 14px; }
+  .phone .cassette { width: 100%; padding: 16px 16px 20px; }
+  .phone .hubs { padding: 2px 20px 14px; }
+  .phone .hub { width: 32px; height: 32px; }
+  .phone .label-strip h1 { font-size: 19px; }
+
+  .callout {
+    max-width: 920px; margin: 0 auto; background: rgba(255,255,255,0.92); border-radius: 12px;
+    padding: 16px 20px; font-size: 13px; color: #3a362f; line-height: 1.65;
+  }
+  .callout-wrap { padding: 0 24px 50px; background: #14140f; }
+  .callout b { color: #2E2C2E; }
+</style>
+</head>
+<body>
+
+<div class="page-title">Concept — real background, always visible, plus the queue / publish flow</div>
+
+<div class="scene">
+
+  <!-- Add to queue -->
+  <div class="cassette">
+    <div class="hubs"><div class="hub"></div><div class="hub"></div></div>
+    <div class="label-strip">
+      <h1>Add to queue</h1>
+      <p>Logged in as Rob</p>
+    </div>
+
+    <div class="field">
+      <label>Audio files</label>
+      <div class="file-row"><span class="choose">Choose files</span><span class="fname">3 files selected</span></div>
+      <p class="helper">Drop as many as you like — nothing is published yet. Fill in title and artist once each file lands in the queue below.</p>
+    </div>
+
+    <button class="btn-secondary">+ Add to queue</button>
+  </div>
+
+  <!-- Queue / Side B -->
+  <div class="cassette">
+    <div class="hubs"><div class="hub"></div><div class="hub"></div></div>
+    <div class="label-strip">
+      <h1>Side B — Queue</h1>
+      <p>Waiting to be published</p>
+    </div>
+    <span class="tag tag-pending">4 pending</span>
+
+    <div style="margin-top:14px;">
+      <div class="queue-item">
+        <div class="qi-main">
+          <div class="qi-title">Ocean Avenue</div>
+          <div class="qi-artist">Yellowcard · queued by Rob</div>
+        </div>
+        <div class="qi-size">3.1MB</div>
+        <button class="qi-remove">×</button>
+      </div>
+      <div class="queue-item">
+        <div class="qi-main">
+          <div class="qi-title">Two Weeks</div>
+          <div class="qi-artist">Grizzly Bear · queued by Dan</div>
+        </div>
+        <div class="qi-size">4.6MB</div>
+        <button class="qi-remove">×</button>
+      </div>
+      <div class="queue-item">
+        <div class="qi-main">
+          <div class="qi-title">(untitled — needs a title)</div>
+          <div class="qi-artist">queued by Rob</div>
+        </div>
+        <div class="qi-size">2.8MB</div>
+        <button class="qi-remove">×</button>
+      </div>
+      <div class="queue-item">
+        <div class="qi-main">
+          <div class="qi-title">Skeleton Cartier</div>
+          <div class="qi-artist">Popcaan · queued by Dan</div>
+        </div>
+        <div class="qi-size">3.9MB</div>
+        <button class="qi-remove">×</button>
+      </div>
+    </div>
+
+    <div class="queue-summary">
+      <span>4 tracks · 14.4MB</span>
+      <span><b>60</b> → <b>64</b> on tape</span>
+    </div>
+
+    <button class="btn-primary disabled">Publish 4 tracks</button>
+    <p class="helper">One track is missing a title — fix it to enable publishing. Publishing converts, uploads, and packages all queued tracks into the live mixtape at once.</p>
+  </div>
+
+</div>
+
+<div class="callout-wrap">
+  <div class="callout">
+    <b>Why split it this way:</b> queued tracks use a dashed border and an amber "pending" tag — visually unfinished, like tape that hasn't been recorded yet. Only "Publish" is red, so red stays reserved for the one action that actually changes the live mixtape everyone hears. The publish button disables itself with a plain-language reason (not just grayed out silently) when a queued track is missing required info. The remove control is a quiet icon button until hovered, so the row doesn't scream "delete me" at rest.<br><br>
+    <b>Background:</b> both cards now sit on your actual scene photo via <code>background-attachment: fixed</code> so it never scrolls or gets replaced by a plain color — same treatment your original design already had, just carried through consistently. On mobile, drop <code>fixed</code> for <code>scroll</code> (iOS Safari doesn't support fixed backgrounds well) and use your mobile-cropped photo, shown below.
+  </div>
+</div>
+
+<div class="mobile-block">
+  <div class="phone">
+    <div class="phone-screen">
+      <div class="phone-content">
+        <div class="cassette">
+          <div class="hubs"><div class="hub"></div><div class="hub"></div></div>
+          <div class="label-strip">
+            <h1>Side B</h1>
+            <p>4 pending</p>
+          </div>
+          <div class="queue-item">
+            <div class="qi-main">
+              <div class="qi-title">Ocean Avenue</div>
+              <div class="qi-artist">Yellowcard</div>
+            </div>
+            <button class="qi-remove">×</button>
+          </div>
+          <div class="queue-item">
+            <div class="qi-main">
+              <div class="qi-title">Two Weeks</div>
+              <div class="qi-artist">Grizzly Bear</div>
+            </div>
+            <button class="qi-remove">×</button>
+          </div>
+          <button class="btn-primary" style="margin-top:14px;">Publish 4 tracks</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

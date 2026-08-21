@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>The Field Mixtape — redesign concept</title>
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --shell: #2E2C2E;
+    --shell-light: #46434A;
+    --shell-window: #1C1A1C;
+    --label-cream: #F0E6D2;
+    --label-cream-dark: #D9CCAE;
+    --accent-red: #C1402E;
+    --accent-blue: #3D5A80;
+    --text-cream: #F5F0E6;
+    --text-muted: rgba(245,240,230,0.62);
+    --sky-top: #AFD9D6;
+    --sky-bottom: #E7C9A3;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-bottom) 100%);
+    padding: 48px 24px;
+    min-height: 100vh;
+  }
+  .page-title {
+    text-align: center;
+    color: #2E2C2E;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0.55;
+    margin-bottom: 40px;
+  }
+  .row {
+    display: flex;
+    gap: 40px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-start;
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+
+  /* ---------- Cassette card shell ---------- */
+  .cassette {
+    width: 380px;
+    background: var(--shell);
+    border-radius: 18px;
+    padding: 22px 24px 28px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+    position: relative;
+  }
+  .hubs {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 34px 18px;
+  }
+  .hub {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: var(--shell-window);
+    border: 3px solid var(--shell-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .hub::after {
+    content: "";
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--shell-light);
+  }
+  .label-strip {
+    background: var(--label-cream);
+    border-radius: 3px;
+    padding: 14px 18px 16px;
+    transform: rotate(-0.6deg);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.25);
+    position: relative;
+    margin-bottom: 20px;
+  }
+  .label-strip::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 7px;
+    background: var(--accent-red);
+    border-radius: 3px 0 0 3px;
+  }
+  .label-strip h1 {
+    font-family: 'Kalam', cursive;
+    font-weight: 700;
+    font-size: 26px;
+    color: #2E2C2E;
+    margin: 0 0 2px 8px;
+    line-height: 1.1;
+  }
+  .label-strip p {
+    font-family: 'Inter', sans-serif;
+    font-size: 12.5px;
+    color: #6b6355;
+    margin: 0 0 0 8px;
+  }
+  .subtext {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin: 0 0 4px;
+  }
+  .subtext b { color: var(--text-cream); font-weight: 600; }
+
+  .btn-logout {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 7px 16px;
+    background: transparent;
+    color: var(--text-cream);
+    border: 1px solid rgba(245,240,230,0.35);
+    border-radius: 6px;
+    font-size: 12.5px;
+    font-weight: 500;
+    text-decoration: none;
+    letter-spacing: 0.02em;
+  }
+
+  .link-line {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(245,240,230,0.12);
+  }
+  .link-line a {
+    color: #8CB3D9;
+    font-size: 13.5px;
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  /* tape gauge instead of plain storage text */
+  .gauge-wrap { margin-top: 14px; }
+  .gauge-label {
+    display: flex;
+    justify-content: space-between;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 5px;
+  }
+  .gauge-label b { color: var(--text-cream); font-weight: 500; }
+  .gauge-track {
+    height: 6px;
+    background: rgba(245,240,230,0.12);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .gauge-fill {
+    height: 100%;
+    width: 5%;
+    background: var(--accent-red);
+    border-radius: 3px;
+  }
+  .gauge-note {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    margin-top: 6px;
+  }
+
+  .field { margin-top: 18px; }
+  .field label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+  }
+  .field input[type=text], .field input[type=password] {
+    width: 100%;
+    background: var(--shell-window);
+    border: 1px solid rgba(245,240,230,0.14);
+    border-radius: 6px;
+    padding: 10px 12px;
+    color: var(--text-cream);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+  }
+  .file-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--shell-window);
+    border: 1px solid rgba(245,240,230,0.14);
+    border-radius: 6px;
+    padding: 9px 12px;
+  }
+  .file-row .choose {
+    background: var(--shell-light);
+    color: var(--text-cream);
+    font-size: 12.5px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 4px;
+  }
+  .file-row .fname { font-size: 12.5px; color: var(--text-muted); }
+
+  .checkline {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 16px;
+    font-size: 12.5px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+  .checkline input { margin-top: 3px; }
+  .checkline b { color: var(--text-cream); }
+
+  .btn-primary {
+    width: 100%;
+    margin-top: 20px;
+    padding: 12px;
+    background: var(--accent-red);
+    color: var(--text-cream);
+    border: none;
+    border-radius: 7px;
+    font-family: 'Inter', sans-serif;
+    font-size: 14.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  /* ---------- Tracklist ---------- */
+  .tracklist {
+    width: 460px;
+    background: var(--shell);
+    border-radius: 18px;
+    padding: 22px 0 10px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+  }
+  .tracklist .label-strip { margin: 0 24px 18px; }
+  .tl-head {
+    display: grid;
+    grid-template-columns: 44px 1fr 70px 78px;
+    padding: 0 24px 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(245,240,230,0.12);
+  }
+  .tl-row {
+    display: grid;
+    grid-template-columns: 44px 1fr 70px 78px;
+    padding: 9px 24px;
+    align-items: center;
+    border-bottom: 1px solid rgba(245,240,230,0.06);
+  }
+  .tl-row:hover { background: rgba(245,240,230,0.04); }
+  .tl-num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--accent-red);
+  }
+  .tl-track { font-size: 13.5px; color: var(--text-cream); }
+  .tl-by { font-size: 12px; color: var(--text-muted); }
+  .tl-date {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: right;
+  }
+  .tl-footer {
+    padding: 12px 24px 4px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .callout {
+    max-width: 900px;
+    margin: 40px auto 0;
+    background: rgba(255,255,255,0.75);
+    border-radius: 12px;
+    padding: 16px 20px;
+    font-size: 13px;
+    color: #3a362f;
+    line-height: 1.6;
+  }
+  .callout b { color: #2E2C2E; }
+</style>
+</head>
+<body>
+
+<div class="page-title">Concept — cassette-shell design system</div>
+
+<div class="row">
+
+  <!-- Add a track -->
+  <div class="cassette">
+    <div class="hubs"><div class="hub"></div><div class="hub"></div></div>
+    <div class="label-strip">
+      <h1>Add a track</h1>
+      <p>Logged in as Rob</p>
+    </div>
+    <a class="btn-logout" href="#">Log out</a>
+
+    <div class="link-line">
+      <a href="#">View the current mixtape on Thunderstore →</a>
+      <p class="subtext" style="margin-top:10px;">Up to 70 tracks total, each under 8000KB once converted.</p>
+    </div>
+
+    <div class="gauge-wrap">
+      <div class="gauge-label"><span>Tape used</span><b>0.23 / 4.5 GB</b></div>
+      <div class="gauge-track"><div class="gauge-fill"></div></div>
+      <p class="gauge-note">~18 more publishes left at the current mixtape size.</p>
+    </div>
+
+    <div class="field">
+      <label>Audio file</label>
+      <div class="file-row"><span class="choose">Choose file</span><span class="fname">No file chosen</span></div>
+    </div>
+    <div class="field">
+      <label>Song title</label>
+      <input type="text" placeholder="">
+    </div>
+    <div class="field">
+      <label>Artist</label>
+      <input type="text" placeholder="">
+    </div>
+
+    <label class="checkline">
+      <input type="checkbox">
+      <span><b>Dry run</b> — tests conversion, upload, and packaging, but stops before publishing. Nothing goes live.</span>
+    </label>
+
+    <button class="btn-primary">Add to mixtape</button>
+  </div>
+
+  <!-- Tracklist -->
+  <div class="tracklist">
+    <div class="label-strip">
+      <h1>Tracks</h1>
+      <p>60 total — add yours</p>
+    </div>
+    <div class="tl-head"><span>#</span><span>Track</span><span>By</span><span style="text-align:right">Added</span></div>
+    <div class="tl-row"><span class="tl-num">01</span><span class="tl-track">All You Children</span><span class="tl-by">Rob</span><span class="tl-date">8/20</span></div>
+    <div class="tl-row"><span class="tl-num">02</span><span class="tl-track">Semi-Charmed Life</span><span class="tl-by">Rob</span><span class="tl-date">8/20</span></div>
+    <div class="tl-row"><span class="tl-num">03</span><span class="tl-track">F.O.M.O.</span><span class="tl-by">Dan</span><span class="tl-date">8/19</span></div>
+    <div class="tl-row"><span class="tl-num">04</span><span class="tl-track">Get Busy</span><span class="tl-by">Rob</span><span class="tl-date">8/17</span></div>
+    <div class="tl-row"><span class="tl-num">05</span><span class="tl-track">Temperature</span><span class="tl-by">Rob</span><span class="tl-date">8/17</span></div>
+    <div class="tl-row"><span class="tl-num">06</span><span class="tl-track">All Along the Watchtower</span><span class="tl-by">Dan</span><span class="tl-date">8/16</span></div>
+    <div class="tl-row"><span class="tl-num">07</span><span class="tl-track">Bangarang (ft. Sirah)</span><span class="tl-by">Rob</span><span class="tl-date">8/16</span></div>
+    <div class="tl-footer">60 tracks total</div>
+  </div>
+
+</div>
+
+<div class="callout">
+  <b>What changed:</b> the card now reads as a cassette shell (hub circles + rotated label strip) instead of a generic modal. The marker font is used only in the label strip — everywhere else stays clean Inter for legibility. Track numbers and dates switch to a monospace to feel like a tape counter. The storage line becomes a small gauge. The button and one accent color throughout now come from the tape's own edge-stripe red instead of a default UI blue.
+</div>
+
+</body>
+</html>

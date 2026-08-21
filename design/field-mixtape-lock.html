@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>The Field Mixtape — batch editing concept v3</title>
+<link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Archivo+Black&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --shell: rgba(30,28,29,0.9);
+    --shell-light: #46434A;
+    --label-cream: #F2ECDD;
+    --stripe-orange: #D98B3E;
+    --stripe-red: #B23A2E;
+    --text-cream: #F5F0E6;
+    --text-muted: rgba(245,240,230,0.62);
+    --pending-amber: #D9A441;
+    --pending-red: #C1554A;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; font-family: 'Inter', sans-serif; }
+  .page-title {
+    text-align: center; color: #fff; font-size: 12px; letter-spacing: 0.08em;
+    text-transform: uppercase; opacity: 0.85; padding: 14px 0; background: #1a1a1a;
+  }
+  .scene {
+    background-image: url('beach-bg-desktop.jpg');
+    background-size: cover; background-position: center; background-attachment: fixed;
+    min-height: 100vh; padding: 48px 24px 140px;
+  }
+  .layout {
+    display: flex; gap: 28px; max-width: 1180px; margin: 0 auto;
+    align-items: flex-start; flex-wrap: wrap; justify-content: center;
+  }
+
+  .cassette {
+    background: var(--shell); backdrop-filter: blur(6px); border-radius: 18px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+    position: relative;
+  }
+  .hubs { display: flex; justify-content: space-between; padding: 20px 30px 16px; }
+  .hub {
+    width: 40px; height: 40px; border-radius: 50%; background: rgba(0,0,0,0.4);
+    border: 3px solid var(--shell-light); display: flex; align-items: center; justify-content: center;
+  }
+  .hub::after { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--shell-light); }
+
+  /* side marker: pinned to the right corner of the label strip itself, handwritten like the title */
+  .side-marker {
+    display: flex; align-items: center; gap: 6px; flex-shrink: 0; padding-top: 1px;
+  }
+  .side-marker .box {
+    width: 19px; height: 19px; border-radius: 3px; background: #3a362f;
+    color: var(--label-cream); font-family: 'Archivo Black', 'Arial Narrow', sans-serif;
+    font-size: 11px; letter-spacing: -0.02em;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .side-marker .txt {
+    font-family: 'Kalam', cursive; font-weight: 700; font-size: 15px;
+    color: #6b6355;
+  }
+
+  /* label strip: title pinned left, side marker pinned right, both in the marker font */
+  .label-strip {
+    background: var(--label-cream); border-radius: 3px; padding: 12px 16px 14px 18px;
+    transform: rotate(-0.4deg); box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+    position: relative; margin: 0 20px 16px; overflow: hidden;
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  }
+  .label-strip::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 7px;
+    background: linear-gradient(90deg, var(--stripe-orange) 0 70%, var(--stripe-red) 70% 100%);
+  }
+  .label-main h1 { font-family: 'Kalam', cursive; font-weight: 700; font-size: 22px; color: #2b2822; margin: 0 0 2px; }
+  .label-main p { font-size: 11.5px; color: #6b6355; margin: 0; }
+
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px; font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 7px; border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .tag-pending { background: rgba(217,164,65,0.16); color: var(--pending-amber); border: 1px solid rgba(217,164,65,0.4); }
+  .tag-removing { background: rgba(193,85,74,0.18); color: #E8887A; border: 1px solid rgba(193,85,74,0.45); }
+
+  /* ---------- scroll-fade wrapper (reused by Side A table body and Side B queue lists) ---------- */
+  .scroll-wrap { position: relative; }
+  .scroll-fade {
+    position: absolute; left: 0; right: 0; height: 22px; pointer-events: none;
+    z-index: 2; opacity: 0; transition: opacity 0.15s ease;
+  }
+  .scroll-fade.top {
+    top: 0; background: linear-gradient(180deg, rgba(20,18,19,0.85), transparent);
+  }
+  .scroll-fade.bottom {
+    bottom: 0; background: linear-gradient(0deg, rgba(20,18,19,0.85), transparent);
+  }
+  .scroll-fade.visible { opacity: 1; }
+  .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+
+  /* ---------- Side A: header sits outside the scroll area now ---------- */
+  .side-a { width: 620px; }
+  .table-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 20px 10px; font-size: 11.5px; color: var(--text-muted);
+  }
+  .table-toolbar .search {
+    background: rgba(0,0,0,0.35); border: 1px solid rgba(245,240,230,0.14); border-radius: 6px;
+    padding: 6px 10px; color: var(--text-cream); font-size: 12.5px; width: 160px;
+  }
+  .t-head {
+    display: grid; grid-template-columns: 32px 1fr 64px 70px 30px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em;
+    color: var(--text-muted); text-transform: uppercase; padding: 0 20px 6px;
+    border-bottom: 1px solid rgba(245,240,230,0.14);
+  }
+  .track-table { padding: 0 20px; max-height: 344px; overflow-y: auto; }
+  .t-row {
+    display: grid; grid-template-columns: 32px 1fr 64px 70px 30px; align-items: center;
+    padding: 8px 0; border-bottom: 1px solid rgba(245,240,230,0.06); font-size: 13px;
+  }
+  .t-row.removing { border-bottom-style: dashed; opacity: 0.6; }
+  .t-row.removing .t-title, .t-row.removing .t-by { text-decoration: line-through; }
+  .t-num { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--pending-red); opacity: 0.85; }
+  .t-title { color: var(--text-cream); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .t-by { font-size: 11.5px; color: var(--text-muted); }
+  .t-date { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--text-muted); }
+  .t-action {
+    width: 26px; height: 26px; border-radius: 6px; border: 1px solid rgba(245,240,230,0.16);
+    background: transparent; color: var(--text-muted); font-size: 13px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; line-height: 1;
+  }
+  .t-action:hover { background: rgba(193,85,74,0.18); border-color: rgba(193,85,74,0.5); color: #E8887A; }
+  .t-action.undo { color: var(--pending-amber); border-color: rgba(217,164,65,0.4); font-size: 14px; }
+  .table-footer {
+    padding: 10px 20px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-muted);
+  }
+
+  /* ---------- Side B: additions + removals together ---------- */
+  .side-b { width: 340px; }
+  .field { padding: 0 20px; margin-top: 4px; }
+  .file-row {
+    display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.35);
+    border: 1px dashed rgba(245,240,230,0.25); border-radius: 6px; padding: 11px;
+  }
+  .file-row .choose { background: var(--shell-light); color: var(--text-cream); font-size: 11.5px; font-weight: 500; padding: 6px 11px; border-radius: 4px; }
+  .file-row .fname { font-size: 11.5px; color: var(--text-muted); }
+  .btn-secondary {
+    width: calc(100% - 40px); margin: 12px 20px 14px; padding: 10px; background: transparent;
+    color: var(--text-cream); border: 1px solid rgba(245,240,230,0.3); border-radius: 7px;
+    font-size: 13px; font-weight: 600;
+  }
+  .section-label {
+    padding: 10px 20px 6px; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
+    letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .queue-scroll { max-height: 220px; overflow-y: auto; padding: 0 20px; }
+  .queue-item { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px dashed rgba(245,240,230,0.14); }
+  .queue-item:last-of-type { border-bottom: none; }
+  .qi-main { flex: 1; min-width: 0; }
+  .qi-title { font-size: 12.5px; color: var(--text-cream); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .qi-artist { font-size: 11px; color: var(--text-muted); }
+  .qi-title.strike { text-decoration: line-through; opacity: 0.7; }
+  .qi-remove {
+    width: 24px; height: 24px; border-radius: 6px; border: 1px solid rgba(245,240,230,0.18);
+    background: transparent; color: var(--text-muted); font-size: 13px; cursor: pointer; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; line-height: 1;
+  }
+  .qi-remove:hover { background: rgba(178,58,46,0.18); border-color: rgba(178,58,46,0.5); color: #E8887A; }
+  .qi-undo {
+    flex-shrink: 0; width: 24px; height: 24px; border: 1px solid rgba(217,164,65,0.4); color: var(--pending-amber);
+    background: transparent; border-radius: 6px; font-size: 13px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; line-height: 1;
+  }
+  .divider { height: 1px; background: rgba(245,240,230,0.1); margin: 4px 20px 0; }
+
+  .file-helper { padding: 6px 20px 0; font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+
+  /* ---------- Sticky batch bar ---------- */
+  .batch-bar {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: rgba(20,18,19,0.95); backdrop-filter: blur(8px);
+    border-top: 1px solid rgba(245,240,230,0.12);
+    padding: 12px 24px; display: flex; align-items: center; justify-content: center; gap: 24px; flex-wrap: wrap;
+  }
+  .quota {
+    display: flex; align-items: center; gap: 8px;
+    padding-right: 18px; border-right: 1px solid rgba(245,240,230,0.14);
+  }
+  .quota-track {
+    width: 56px; height: 5px; border-radius: 3px; background: rgba(245,240,230,0.14); overflow: hidden;
+  }
+  .quota-fill { height: 100%; width: 5%; background: var(--stripe-orange); border-radius: 3px; }
+  .quota-text { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text-muted); }
+  .quota-text b { color: var(--text-cream); font-weight: 500; }
+  .batch-summary { font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: var(--text-cream); display: flex; gap: 14px; align-items: baseline; }
+  .batch-summary .add { color: var(--pending-amber); }
+  .batch-summary .rem { color: var(--pending-red); }
+  .batch-summary .muted { color: var(--text-muted); }
+  .btn-publish {
+    padding: 10px 22px; background: var(--stripe-red); color: var(--text-cream); border: none;
+    border-radius: 7px; font-size: 13.5px; font-weight: 600; cursor: pointer;
+  }
+  .btn-clear { background: transparent; border: none; color: var(--text-muted); font-size: 12px; text-decoration: underline; cursor: pointer; }
+
+  .callout-wrap { padding: 30px 24px 60px; background: #14140f; }
+  .callout {
+    max-width: 920px; margin: 0 auto; background: rgba(255,255,255,0.92); border-radius: 12px;
+    padding: 16px 20px; font-size: 13px; color: #3a362f; line-height: 1.65;
+  }
+  .callout b { color: #2E2C2E; }
+
+  /* ---------- Deck bar: the shared record/lock control ---------- */
+  .demo-switcher {
+    max-width: 1180px; margin: 0 auto 10px; display: flex; gap: 8px; justify-content: center;
+  }
+  .demo-switcher button {
+    font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase;
+    padding: 5px 10px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.25);
+    background: rgba(0,0,0,0.3); color: rgba(255,255,255,0.7); cursor: pointer;
+  }
+  .demo-switcher button.active { background: rgba(255,255,255,0.85); color: #14140f; border-color: transparent; }
+
+  .deck-bar {
+    max-width: 1180px; margin: 0 auto 26px; background: rgba(20,18,19,0.92); backdrop-filter: blur(8px);
+    border-radius: 12px; border: 1px solid rgba(245,240,230,0.14);
+    padding: 12px 20px; display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap;
+  }
+  .deck-status { display: flex; align-items: center; gap: 10px; }
+  .rec-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--stripe-red); flex-shrink: 0; box-sizing: border-box; }
+  .rec-dot.filled { background: var(--stripe-red); }
+  .rec-dot.pulsing { animation: rec-pulse 1.3s ease-in-out infinite; }
+  @keyframes rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .deck-text-wrap { display: flex; flex-direction: column; gap: 1px; }
+  .deck-text { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--text-cream); }
+  .deck-sub { font-size: 11px; color: var(--text-muted); }
+  .deck-right { display: flex; align-items: center; gap: 14px; }
+  .deck-timer { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text-muted); }
+  .btn-rec {
+    display: flex; align-items: center; gap: 7px; padding: 8px 16px; border-radius: 7px;
+    border: 1px solid var(--stripe-red); background: transparent; color: #E8887A;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .btn-rec:hover { background: rgba(178,58,46,0.15); }
+  .btn-rec .rec-dot { border-color: #E8887A; }
+  .btn-stop {
+    padding: 8px 16px; border-radius: 7px; border: 1px solid rgba(245,240,230,0.3);
+    background: transparent; color: var(--text-cream); font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .idle-warning {
+    display: none; align-items: center; gap: 10px; background: rgba(217,164,65,0.14);
+    border: 1px solid rgba(217,164,65,0.4); border-radius: 7px; padding: 6px 12px;
+    font-size: 12px; color: var(--pending-amber);
+  }
+  .idle-warning.show { display: flex; }
+  .idle-warning button {
+    background: var(--pending-amber); color: #2b2822; border: none; border-radius: 5px;
+    padding: 4px 10px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+  }
+
+  /* locked-out styling: applied via body[data-lock-state] so both panels react together */
+  body[data-lock-state="idle"] .t-action,
+  body[data-lock-state="idle"] .btn-secondary,
+  body[data-lock-state="idle"] .qi-remove,
+  body[data-lock-state="idle"] .qi-undo,
+  body[data-lock-state="idle"] .btn-publish,
+  body[data-lock-state="idle"] .btn-clear,
+  body[data-lock-state="idle"] .file-row,
+  body[data-lock-state="other"] .t-action,
+  body[data-lock-state="other"] .btn-secondary,
+  body[data-lock-state="other"] .qi-remove,
+  body[data-lock-state="other"] .qi-undo,
+  body[data-lock-state="other"] .btn-publish,
+  body[data-lock-state="other"] .btn-clear,
+  body[data-lock-state="other"] .file-row {
+    opacity: 0.38; pointer-events: none; filter: saturate(0.6);
+  }
+  .lock-hint {
+    display: none; font-size: 10.5px; color: var(--text-muted); padding: 0 20px 10px; font-style: italic;
+  }
+  body[data-lock-state="idle"] .lock-hint, body[data-lock-state="other"] .lock-hint { display: block; }
+</style>
+</head>
+<body>
+
+<div class="page-title">Concept — single-user lock, framed as pressing record on the deck</div>
+
+<div class="scene">
+  <div class="demo-switcher">
+    <button data-demo="idle" class="active">Demo: nobody recording</button>
+    <button data-demo="you">Demo: you're recording</button>
+    <button data-demo="other">Demo: Dan is recording</button>
+  </div>
+
+  <div class="deck-bar">
+    <div class="deck-status">
+      <div class="rec-dot" data-rec-dot></div>
+      <div class="deck-text-wrap">
+        <span class="deck-text" data-deck-text>Nobody's recording</span>
+        <span class="deck-sub" data-deck-sub>Anyone can start a session to add or remove tracks.</span>
+      </div>
+    </div>
+    <div class="deck-right">
+      <div class="idle-warning" data-idle-warning>
+        <span>Still there? Recording stops soon from inactivity.</span>
+        <button data-still-here>I'm still here</button>
+      </div>
+      <span class="deck-timer" data-deck-timer style="display:none;"></span>
+      <button class="btn-rec" data-btn-start><span class="rec-dot"></span>Start editing</button>
+      <button class="btn-stop" data-btn-stop style="display:none;">Stop editing</button>
+    </div>
+  </div>
+
+  <div class="layout">
+
+    <!-- Side A -->
+    <div class="cassette side-a">
+      <div class="hubs"><div class="hub"></div><div class="hub"></div></div>
+      <div class="label-strip">
+        <div class="label-main">
+          <h1>Tracks</h1>
+          <p>60 live · 2 marked for removal</p>
+        </div>
+        <div class="side-marker"><span class="txt">Side A</span><span class="box">A</span></div>
+      </div>
+      <p class="lock-hint">Press "Start editing" above to mark tracks for removal.</p>
+      <div class="table-toolbar">
+        <span>Click <span style="color:var(--text-cream)">×</span> to mark a track for removal</span>
+        <input class="search" placeholder="Filter tracks…" />
+      </div>
+      <div class="t-head"><span></span><span>Track</span><span>By</span><span>Added</span><span></span></div>
+      <div class="scroll-wrap">
+        <div class="scroll-fade top" data-fade-top-a></div>
+        <div class="track-table no-scrollbar" data-scroll-a>
+          <div class="t-row"><span class="t-num">01</span><span class="t-title">All You Children</span><span class="t-by">Rob</span><span class="t-date">8/20</span><button class="t-action">×</button></div>
+          <div class="t-row"><span class="t-num">02</span><span class="t-title">Semi-Charmed Life</span><span class="t-by">Rob</span><span class="t-date">8/20</span><button class="t-action">×</button></div>
+          <div class="t-row removing"><span class="t-num">03</span><span class="t-title">F.O.M.O.</span><span class="t-by">Dan</span><span class="t-date">8/19</span><button class="t-action undo" title="Undo removal">↺</button></div>
+          <div class="t-row"><span class="t-num">04</span><span class="t-title">Get Busy</span><span class="t-by">Rob</span><span class="t-date">8/17</span><button class="t-action">×</button></div>
+          <div class="t-row"><span class="t-num">05</span><span class="t-title">Temperature</span><span class="t-by">Rob</span><span class="t-date">8/17</span><button class="t-action">×</button></div>
+          <div class="t-row"><span class="t-num">06</span><span class="t-title">All Along the Watchtower</span><span class="t-by">Dan</span><span class="t-date">8/16</span><button class="t-action">×</button></div>
+          <div class="t-row"><span class="t-num">07</span><span class="t-title">Bangarang (ft. Sirah)</span><span class="t-by">Rob</span><span class="t-date">8/16</span><button class="t-action">×</button></div>
+          <div class="t-row removing"><span class="t-num">08</span><span class="t-title">Because I'm Me</span><span class="t-by">Dan</span><span class="t-date">8/16</span><button class="t-action undo" title="Undo removal">↺</button></div>
+          <div class="t-row"><span class="t-num">09</span><span class="t-title">Break Stuff</span><span class="t-by">Dan</span><span class="t-date">8/16</span><button class="t-action">×</button></div>
+          <div class="t-row"><span class="t-num">10</span><span class="t-title">Bust a Move</span><span class="t-by">Dan</span><span class="t-date">8/16</span><button class="t-action">×</button></div>
+          <div class="t-row"><span class="t-num">11</span><span class="t-title">Can I Kick It</span><span class="t-by">Dan</span><span class="t-date">8/16</span><button class="t-action">×</button></div>
+          <div class="t-row"><span class="t-num">12</span><span class="t-title">Can't Punk Me</span><span class="t-by">Dan</span><span class="t-date">8/16</span><button class="t-action">×</button></div>
+        </div>
+        <div class="scroll-fade bottom visible" data-fade-bottom-a></div>
+      </div>
+      <div class="table-footer">60 tracks on tape · scroll for more</div>
+    </div>
+
+    <!-- Side B -->
+    <div class="cassette side-b">
+      <div class="hubs"><div class="hub"></div><div class="hub"></div></div>
+      <div class="label-strip">
+        <div class="label-main">
+          <h1>Queue</h1>
+          <p>Everything pending this batch</p>
+        </div>
+        <div class="side-marker"><span class="txt">Side B</span><span class="box">B</span></div>
+      </div>
+      <p class="lock-hint">Press "Start editing" above to add or remove tracks.</p>
+      <div class="field">
+        <div class="file-row"><span class="choose">Choose files</span><span class="fname">2 files selected</span></div>
+      <p class="file-helper">Each file must convert to under 8000KB. Up to 70 tracks total on the tape.</p>
+      </div>
+      <button class="btn-secondary">+ Add to queue</button>
+
+      <div class="section-label"><span>Adding</span><span class="tag tag-pending">2</span></div>
+      <div class="scroll-wrap">
+        <div class="scroll-fade top" data-fade-top-add></div>
+        <div class="queue-scroll no-scrollbar" data-scroll-add>
+          <div class="queue-item">
+            <div class="qi-main"><div class="qi-title">Ocean Avenue</div><div class="qi-artist">Yellowcard · Rob</div></div>
+            <button class="qi-remove">×</button>
+          </div>
+          <div class="queue-item">
+            <div class="qi-main"><div class="qi-title">Two Weeks</div><div class="qi-artist">Grizzly Bear · Dan</div></div>
+            <button class="qi-remove">×</button>
+          </div>
+        </div>
+        <div class="scroll-fade bottom" data-fade-bottom-add></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section-label"><span>Removing</span><span class="tag tag-removing">2</span></div>
+      <div class="scroll-wrap">
+        <div class="scroll-fade top" data-fade-top-rem></div>
+        <div class="queue-scroll no-scrollbar" data-scroll-rem>
+          <div class="queue-item">
+            <div class="qi-main"><div class="qi-title strike">F.O.M.O.</div><div class="qi-artist">Your Neighbors</div></div>
+            <button class="qi-undo" title="Undo removal">↺</button>
+          </div>
+          <div class="queue-item">
+            <div class="qi-main"><div class="qi-title strike">Because I'm Me</div><div class="qi-artist">The Avalanches</div></div>
+            <button class="qi-undo" title="Undo removal">↺</button>
+          </div>
+        </div>
+        <div class="scroll-fade bottom" data-fade-bottom-rem></div>
+      </div>
+      <div style="height:16px;"></div>
+    </div>
+
+  </div>
+</div>
+
+<div class="batch-bar">
+  <div class="quota">
+    <div class="quota-track"><div class="quota-fill"></div></div>
+    <span class="quota-text"><b>0.23</b>/4.5GB this month · ~18 publishes left</span>
+  </div>
+  <div class="batch-summary">
+    <span class="add">+2 additions</span>
+    <span class="rem">−2 removals</span>
+    <span class="muted">→ 60 tracks after publish</span>
+  </div>
+  <button class="btn-publish">Publish changes</button>
+  <button class="btn-clear">Clear batch</button>
+</div>
+
+<div class="callout-wrap">
+  <div class="callout">
+    <b>Try the demo buttons above the deck bar</b> to switch between the three states.<br><br>
+    <b>How it works:</b> "Start editing" is the one shared control for the whole batch — since it's explicit rather than automatic, nobody grabs the lock by accident just from browsing or filtering the tracklist. Once you're recording, every edit control across both Side A and Side B lights up together, because they're really one lock, not two.<br><br>
+    <b>Locked out (idle or someone else recording):</b> the ×, Undo, file picker, Add to queue, Publish, and Clear all go inert at once — dim, unclickable, no per-button explanation needed since the one deck bar at the top already says why. Browsing and the search filter stay live either way, since those don't touch shared state.<br><br>
+    <b>Auto-expiry (5 minutes idle):</b> the deck bar surfaces the countdown-to-risk before it happens rather than silently kicking someone out — an inline "still there?" prompt appears with roughly 30 seconds left in the 5-minute idle window (shortened to 8 seconds total here for the demo, so you can see it fire quickly) with one button to stay in control. If it's ignored, the session should end back into the "nobody's recording" state automatically — I didn't wire that last step into the demo since it's just a repeat of "Stop editing" once the warning times out.
+  </div>
+</div>
+
+<script>
+function wireFade(scrollSel, topSel, bottomSel) {
+  var el = document.querySelector(scrollSel);
+  var top = document.querySelector(topSel);
+  var bottom = document.querySelector(bottomSel);
+  if (!el || !top || !bottom) return;
+  function update() {
+    var atTop = el.scrollTop <= 2;
+    var atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+    var scrollable = el.scrollHeight > el.clientHeight + 2;
+    top.classList.toggle('visible', scrollable && !atTop);
+    bottom.classList.toggle('visible', scrollable && !atBottom);
+  }
+  el.addEventListener('scroll', update);
+  window.addEventListener('resize', update);
+  update();
+}
+wireFade('[data-scroll-a]', '[data-fade-top-a]', '[data-fade-bottom-a]');
+wireFade('[data-scroll-add]', '[data-fade-top-add]', '[data-fade-bottom-add]');
+wireFade('[data-scroll-rem]', '[data-fade-top-rem]', '[data-fade-bottom-rem]');
+
+var recDot = document.querySelector('[data-rec-dot]');
+var deckText = document.querySelector('[data-deck-text]');
+var deckSub = document.querySelector('[data-deck-sub]');
+var deckTimer = document.querySelector('[data-deck-timer]');
+var btnStart = document.querySelector('[data-btn-start]');
+var btnStop = document.querySelector('[data-btn-stop]');
+var idleWarning = document.querySelector('[data-idle-warning]');
+var stillHereBtn = document.querySelector('[data-still-here]');
+var demoButtons = document.querySelectorAll('.demo-switcher button');
+var elapsedSeconds = 0;
+var elapsedTimerId = null;
+
+function formatTime(s) {
+  var m = Math.floor(s / 60);
+  var sec = s % 60;
+  return m + ':' + (sec < 10 ? '0' : '') + sec;
+}
+
+function setState(state) {
+  document.body.setAttribute('data-lock-state', state);
+  idleWarning.classList.remove('show');
+  clearInterval(elapsedTimerId);
+
+  demoButtons.forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-demo') === state); });
+
+  if (state === 'idle') {
+    recDot.className = 'rec-dot';
+    deckText.textContent = "Nobody's recording";
+    deckSub.textContent = 'Anyone can start a session to add or remove tracks.';
+    deckTimer.style.display = 'none';
+    btnStart.style.display = 'flex';
+    btnStop.style.display = 'none';
+  } else if (state === 'you') {
+    recDot.className = 'rec-dot filled pulsing';
+    deckText.textContent = "You're recording";
+    deckSub.textContent = 'Editing is unlocked for you. Ends automatically after 5 minutes idle.';
+    deckTimer.style.display = 'inline';
+    elapsedSeconds = 0;
+    deckTimer.textContent = formatTime(elapsedSeconds);
+    elapsedTimerId = setInterval(function () {
+      elapsedSeconds++;
+      deckTimer.textContent = formatTime(elapsedSeconds);
+      if (elapsedSeconds === 8) idleWarning.classList.add('show');
+    }, 1000);
+    btnStart.style.display = 'none';
+    btnStop.style.display = 'inline-block';
+  } else if (state === 'other') {
+    recDot.className = 'rec-dot filled';
+    deckText.textContent = 'Dan is recording';
+    deckSub.textContent = 'Browsing is fine, but editing is locked until Dan finishes or goes idle.';
+    deckTimer.style.display = 'inline';
+    deckTimer.textContent = 'started 2:14 ago';
+    btnStart.style.display = 'none';
+    btnStop.style.display = 'none';
+  }
+}
+
+demoButtons.forEach(function (b) {
+  b.addEventListener('click', function () { setState(b.getAttribute('data-demo')); });
+});
+btnStart.addEventListener('click', function () { setState('you'); });
+btnStop.addEventListener('click', function () { setState('idle'); });
+stillHereBtn.addEventListener('click', function () {
+  idleWarning.classList.remove('show');
+  elapsedSeconds = 0;
+});
+
+setState('idle');
+</script>
+
+</body>
+</html>
