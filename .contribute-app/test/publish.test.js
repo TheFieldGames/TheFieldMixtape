@@ -568,6 +568,20 @@ test("onStageChange fires for every real stage transition, in order", async (t) 
   ]);
 });
 
+test("logs a batch summary naming the actual added/deleted tracks, not just counts", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "publish-test-batchlog-"));
+  t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
+  const logLines = [];
+  const { deps } = makeFakeDeps({ log: (...args) => logLines.push(args.join(" ")) });
+
+  await processPublish({ displayName: "Rob" }, BASE_CONFIG, { ...deps, tmpBase: tmpDir });
+
+  const batchLine = logLines.find((l) => l.includes("batch:"));
+  assert.ok(batchLine, "expected a log line summarizing the batch");
+  assert.match(batchLine, /\+1 add \[New Track - Someone Third\]/);
+  assert.match(batchLine, /-1 delete \[Old Track - Someone Else\]/);
+});
+
 test("checkCancelled true from the start aborts before any real work, throwing a cancelled SubmissionError", async (t) => {
   const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "publish-test-cancel-early-"));
   t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));

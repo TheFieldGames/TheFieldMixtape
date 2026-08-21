@@ -8,6 +8,7 @@ import {
   handleLogin,
   handleLogout,
 } from "../src/auth.js";
+import { createLockStore } from "../src/editLock.js";
 
 function fakeRes() {
   const res = {
@@ -213,6 +214,32 @@ test("handleLogout logs who logged out", () => {
   const logLines = [];
   handleLogout(req, fakeRes(), { log: (...args) => logLines.push(args.join(" ")) });
   assert.ok(logLines.some((l) => l.includes("Alex")));
+});
+
+test("handleLogout releases the edit lock if the logging-out session holds it", () => {
+  const lockStore = createLockStore();
+  lockStore.acquireLock("session-1", "Rob");
+  assert.equal(lockStore.getLockState("session-1").state, "you");
+
+  const req = { session: { authenticated: true, displayName: "Rob", sessionId: "session-1" } };
+  handleLogout(req, fakeRes(), { log: () => {}, lockStore });
+
+  assert.equal(lockStore.getLockState("anyone-else").state, "idle");
+});
+
+test("handleLogout does not release a lock held by someone else's session", () => {
+  const lockStore = createLockStore();
+  lockStore.acquireLock("session-other", "Dan");
+
+  const req = { session: { authenticated: true, displayName: "Rob", sessionId: "session-1" } };
+  handleLogout(req, fakeRes(), { log: () => {}, lockStore });
+
+  assert.equal(lockStore.getLockState("session-other").state, "you");
+});
+
+test("handleLogout without a lockStore (or without a sessionId) still clears the session and doesn't throw", () => {
+  const req = { session: { authenticated: true, displayName: "Alex" } };
+  assert.doesNotThrow(() => handleLogout(req, fakeRes(), { log: () => {} }));
 });
 
 test("handleLogin: two separate logins get distinct sessionId values — the edit lock depends on this to tell two browser sessions apart even if they share a display name", async () => {

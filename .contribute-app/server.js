@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { loadConfig } from "./src/config.js";
 import { log, logError } from "./src/logger.js";
 import { createLockStore } from "./src/editLock.js";
-import authRoutes from "./routes/auth.js";
+import { createAuthRouter } from "./routes/auth.js";
 import { createIndexRouter } from "./routes/index.js";
 import { createTracksRouter } from "./routes/tracks.js";
 import { createJobsRouter } from "./routes/jobs.js";
@@ -17,8 +17,16 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const config = loadConfig();
 // One shared lock for the whole app (see src/editLock.js) — same
-// single-instance assumption as runExclusive/jobs.js.
-const lockStore = createLockStore();
+// single-instance assumption as runExclusive/jobs.js. Idle auto-expiry is
+// otherwise silent (nothing else observes the moment it happens), so it's
+// logged here — the one place that knows both "a lock just expired" and
+// has the real logger to say so.
+const lockStore = createLockStore({
+  onExpire: (expired) => {
+    const heldForMs = Date.now() - expired.acquiredAt;
+    log(`Lock auto-expired for "${expired.displayName}" after 5 min idle (held for ${(heldForMs / 1000).toFixed(0)}s)`);
+  },
+});
 
 const app = express();
 app.set("view engine", "ejs");
@@ -45,7 +53,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(authRoutes);
+app.use(createAuthRouter(lockStore));
 app.use(createIndexRouter(config, lockStore));
 app.use(createTracksRouter(config, lockStore));
 app.use(createJobsRouter());

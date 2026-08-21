@@ -87,6 +87,31 @@ test("the lock auto-expires after idleTimeoutMs of no activity, freeing it for a
   assert.equal(store.getLockState("session-a", 1001).state, "idle", "expired just past the timeout");
 });
 
+test("onExpire fires exactly once, with the expired lock's details, the moment expiry is actually detected", () => {
+  const expiredEvents = [];
+  const store = createLockStore({
+    idleTimeoutMs: 1000,
+    onExpire: (expired, now) => expiredEvents.push({ expired, now }),
+  });
+  store.acquireLock("session-a", "Alex", 0);
+  store.getLockState("session-a", 500); // still active, no expiry yet
+  assert.equal(expiredEvents.length, 0);
+
+  store.getLockState("session-b", 1500); // first check past the deadline
+  assert.equal(expiredEvents.length, 1);
+  assert.deepEqual(expiredEvents[0].expired, { sessionId: "session-a", displayName: "Alex", acquiredAt: 0, lastActivityAt: 0 });
+  assert.equal(expiredEvents[0].now, 1500);
+
+  store.getLockState("session-b", 2000); // already expired — must not fire again
+  assert.equal(expiredEvents.length, 1);
+});
+
+test("onExpire is optional — a lock store created without one just expires silently, no throw", () => {
+  const store = createLockStore({ idleTimeoutMs: 1000 });
+  store.acquireLock("session-a", "Alex", 0);
+  assert.doesNotThrow(() => store.getLockState("session-a", 2000));
+});
+
 test("touchActivity extends the deadline, so a lock kept warm never expires", () => {
   const store = createLockStore({ idleTimeoutMs: 1000 });
   store.acquireLock("session-a", "Alex", 0);

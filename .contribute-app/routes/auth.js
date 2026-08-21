@@ -1,13 +1,15 @@
 import { Router } from "express";
 import { handleLogin, handleLogout } from "../src/auth.js";
 
-const router = Router();
+export function createAuthRouter(lockStore) {
+  const router = Router();
 
-router.get("/login", (req, res) => {
-  res.render("login", { error: null });
-});
+  router.get("/login", (req, res) => {
+    res.render("login", { error: null });
+  });
 
-router.post("/login", handleLogin);
-router.post("/logout", handleLogout);
+  router.post("/login", handleLogin);
+  router.post("/logout", (req, res) => handleLogout(req, res, { lockStore }));
 
-export default router;
+  return router;
+}

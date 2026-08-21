@@ -18,13 +18,20 @@ export const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 // countdown from the timestamps returned).
 export const WARNING_BEFORE_MS = 30 * 1000;
 
-export function createLockStore({ idleTimeoutMs = IDLE_TIMEOUT_MS } = {}) {
+// `onExpire` defaults to a no-op so tests (and any other caller that
+// doesn't care) don't have to supply one. The real app wires the real
+// logger in (server.js) — otherwise a lock timing out mid-session is
+// completely silent server-side: nothing else ever observes the moment it
+// happens, only that a later acquire/status call finds it already gone.
+export function createLockStore({ idleTimeoutMs = IDLE_TIMEOUT_MS, onExpire = () => {} } = {}) {
   // { sessionId, displayName, acquiredAt, lastActivityAt } | null
   let lock = null;
 
   function expireIfNeeded(now) {
     if (lock && now - lock.lastActivityAt > idleTimeoutMs) {
+      const expired = lock;
       lock = null;
+      onExpire(expired, now);
     }
   }
 

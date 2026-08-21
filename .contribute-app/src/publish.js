@@ -201,6 +201,12 @@ export async function processPublish(input, config, deps = {}) {
     if (pendingAddFilenames.length === 0 && pendingDeleteFilenames.length === 0) {
       throw new SubmissionError("Nothing to publish — the queue is empty.", { stage });
     }
+    // The commit message carries this same summary, but that's only ever
+    // visible by digging into git afterward — logging it here means
+    // Render's own logs say what a given publish actually did.
+    log(
+      `${jobTag} batch: +${pendingAddFilenames.length} add${pendingAddFilenames.length === 1 ? "" : "s"} [${pendingAddFilenames.map(trackNameFromFilename).join(", ")}], -${pendingDeleteFilenames.length} delete${pendingDeleteFilenames.length === 1 ? "" : "s"} [${pendingDeleteFilenames.map(trackNameFromFilename).join(", ")}]`
+    );
 
     // Cheap, approximate early check against the manifest's own bookkeeping
     // (no extra R2 listing needed) — the authoritative real-listing

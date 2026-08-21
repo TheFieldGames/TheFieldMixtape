@@ -67,8 +67,14 @@ export async function handleLogin(req, res, { log = logDefault } = {}) {
   }
 }
 
-export function handleLogout(req, res, { log = logDefault } = {}) {
+export function handleLogout(req, res, { log = logDefault, lockStore } = {}) {
   log(`Logout: "${req.session?.displayName}"`);
+  // Otherwise the lock stays held by a sessionId no session can ever match
+  // again — not even the same person logging back in, since login mints a
+  // fresh sessionId — leaving it stuck until the 5-minute idle auto-expiry.
+  if (lockStore && req.session?.sessionId) {
+    lockStore.releaseLock(req.session.sessionId);
+  }
   req.session = null;
   res.redirect("/login");
 }

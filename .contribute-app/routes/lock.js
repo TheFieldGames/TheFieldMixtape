@@ -17,7 +17,11 @@ export function createLockRouter(lockStore) {
 
   router.post("/lock/acquire", requireAuth, (req, res) => {
     const result = lockStore.acquireLock(req.session.sessionId, req.session.displayName);
-    if (result.ok) log(`Lock acquired by "${req.session.displayName}"`);
+    if (result.ok) {
+      log(`Lock acquired by "${req.session.displayName}"`);
+    } else {
+      log(`Lock acquire refused for "${req.session.displayName}" — held by "${result.heldBy}"`);
+    }
     res.json(result);
   });
 
