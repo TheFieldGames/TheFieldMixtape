@@ -50,19 +50,20 @@ Want to add a song? See [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 42. Ransom - Juice Wrld
 43. Rascal King - MMBostones
 44. Sad Machine - Porter Robinson
-45. Skeleton Cartier - Popcaan
-46. Squabble Up - Kendrick Lamar
-47. Sugar, We're Goin Down - Fall Out Boy
-48. Super-Bon-Bon - Soul Coughing
-49. Tecata
-50. Teenage Dirtbag - Wheatus
-51. Temperature - Sean Paul
-52. Three is the Magic Number - De La Soul
-53. Touch the Sky - Kanye
-54. USA
-55. Valley Ghoul - Provoker
-56. Veridis Quo - Daft Punk
-57. Wagon Wheel - Darius Rucker
-58. Woke Up - Dae Dae
-59. You Can Call me Al - Paul Simon
+45. Semi-Charmed Life - Third Eye Blind
+46. Skeleton Cartier - Popcaan
+47. Squabble Up - Kendrick Lamar
+48. Sugar, We're Goin Down - Fall Out Boy
+49. Super-Bon-Bon - Soul Coughing
+50. Tecata
+51. Teenage Dirtbag - Wheatus
+52. Temperature - Sean Paul
+53. Three is the Magic Number - De La Soul
+54. Touch the Sky - Kanye
+55. USA
+56. Valley Ghoul - Provoker
+57. Veridis Quo - Daft Punk
+58. Wagon Wheel - Darius Rucker
+59. Woke Up - Dae Dae
+60. You Can Call me Al - Paul Simon
 <!-- TRACKLIST:END -->
