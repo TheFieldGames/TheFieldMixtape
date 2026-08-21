@@ -10,6 +10,18 @@ services:
     plan: free
     dockerfilePath: .contribute-app/Dockerfile
     dockerContext: .contribute-app
+    # Without this, Auto-Deploy (which watches all of `main`) redeploys the
+    # service on EVERY real submission, since processSubmission() itself
+    # pushes a commit (README.md) to main — killing the in-flight container
+    # mid tcli-build/tcli-publish. Confirmed via Render's Events log: a
+    # submission's own "Add track: ..." commit triggered "Deploy started"
+    # seconds after the push, which tore down the container that was still
+    # running that same submission (a real incident, 2026-08-21, the first
+    # real submission on this deploy). Scoping the trigger to this directory
+    # means only actual app-code changes redeploy the service.
+    buildFilter:
+      paths:
+        - ".contribute-app/**"
     envVars:
       - key: PORT
         value: 3000
