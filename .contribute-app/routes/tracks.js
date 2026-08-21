@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import { requireAuth, sanitizeDisplayName } from "../src/auth.js";
 import { runExclusive } from "../src/queue.js";
+import { requireLock } from "../src/editLock.js";
 import { queueTrackDelete, cancelQueuedDeletion } from "../src/queueActions.js";
 import { processPublish, SubmissionError } from "../src/publish.js";
 import * as storage from "../src/storage.js";
@@ -31,7 +32,7 @@ function toRow(filename, entry) {
   };
 }
 
-export function createTracksRouter(config) {
+export function createTracksRouter(config, lockStore) {
   const router = Router();
 
   router.get("/tracks", requireAuth, async (req, res) => {
@@ -95,6 +96,7 @@ export function createTracksRouter(config) {
         usageInfo,
         error: null,
         progressSegments,
+        lockState: lockStore.getLockState(req.session.sessionId),
       });
     } catch (err) {
       logError("Failed to load the track list:", err.message);
@@ -107,6 +109,7 @@ export function createTracksRouter(config) {
         usageInfo: null,
         error: "Couldn't load the track list right now — try again shortly.",
         progressSegments,
+        lockState: lockStore.getLockState(req.session.sessionId),
       });
     }
   });
@@ -115,7 +118,7 @@ export function createTracksRouter(config) {
   // git/tcli involved — so this responds synchronously, same as POST
   // /submit. See queueActions.queueTrackDelete for which of the two it
   // actually does, based on the track's current status.
-  router.post("/tracks/delete", requireAuth, async (req, res) => {
+  router.post("/tracks/delete", requireAuth, requireLock(lockStore), async (req, res) => {
     const displayName = req.session.displayName;
     const { filename } = req.body ?? {};
 
@@ -136,7 +139,7 @@ export function createTracksRouter(config) {
     }
   });
 
-  router.post("/tracks/undo-delete", requireAuth, async (req, res) => {
+  router.post("/tracks/undo-delete", requireAuth, requireLock(lockStore), async (req, res) => {
     const displayName = req.session.displayName;
     const { filename } = req.body ?? {};
 
@@ -157,7 +160,7 @@ export function createTracksRouter(config) {
 
   // The only route that actually touches git/tcli — same async-job pattern
   // as the old immediate add/delete flows used. See routes/jobs.js.
-  router.post("/tracks/publish", requireAuth, async (req, res) => {
+  router.post("/tracks/publish", requireAuth, requireLock(lockStore), async (req, res) => {
     const displayName = req.session.displayName;
     const isAdmin = req.session.isAdmin === true;
     // Dry Run is only ever offered in the UI to admin sessions — enforce

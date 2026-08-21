@@ -144,6 +144,8 @@ test("handleLogin: the regular shared password logs in without the admin flag", 
     await handleLogin(req, fakeRes(), { log: () => {} });
     assert.equal(req.session.authenticated, true);
     assert.equal(req.session.isAdmin, false);
+    assert.equal(typeof req.session.sessionId, "string");
+    assert.ok(req.session.sessionId.length > 0);
   } finally {
     process.env.APP_PASSWORD_HASH = prevApp;
     process.env.ADMIN_PASSWORD_HASH = prevAdmin;
@@ -211,4 +213,19 @@ test("handleLogout logs who logged out", () => {
   const logLines = [];
   handleLogout(req, fakeRes(), { log: (...args) => logLines.push(args.join(" ")) });
   assert.ok(logLines.some((l) => l.includes("Alex")));
+});
+
+test("handleLogin: two separate logins get distinct sessionId values — the edit lock depends on this to tell two browser sessions apart even if they share a display name", async () => {
+  const appHash = await bcrypt.hash("shared-secret", 10);
+  const prevApp = process.env.APP_PASSWORD_HASH;
+  process.env.APP_PASSWORD_HASH = appHash;
+  try {
+    const reqA = { body: { password: "shared-secret", name: "Rob" }, session: {} };
+    const reqB = { body: { password: "shared-secret", name: "Rob" }, session: {} };
+    await handleLogin(reqA, fakeRes(), { log: () => {} });
+    await handleLogin(reqB, fakeRes(), { log: () => {} });
+    assert.notEqual(reqA.session.sessionId, reqB.session.sessionId);
+  } finally {
+    process.env.APP_PASSWORD_HASH = prevApp;
+  }
 });

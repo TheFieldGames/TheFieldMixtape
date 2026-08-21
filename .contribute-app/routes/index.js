@@ -4,6 +4,7 @@ import os from "node:os";
 
 import { requireAuth, sanitizeDisplayName } from "../src/auth.js";
 import { runExclusive } from "../src/queue.js";
+import { requireLock } from "../src/editLock.js";
 import { queueTrackAdd } from "../src/queueActions.js";
 import { SubmissionError, MAX_TRACKS, MAX_TRACK_FILE_SIZE_KB } from "../src/publish.js";
 import { log, logError } from "../src/logger.js";
@@ -16,7 +17,7 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 },
 });
 
-export function createIndexRouter(config) {
+export function createIndexRouter(config, lockStore) {
   const router = Router();
 
   router.get("/", requireAuth, async (req, res) => {
@@ -25,6 +26,7 @@ export function createIndexRouter(config) {
       error: null,
       maxTracks: MAX_TRACKS,
       maxTrackFileSizeKb: MAX_TRACK_FILE_SIZE_KB,
+      lockState: lockStore.getLockState(req.session.sessionId),
     });
   });
 
@@ -33,7 +35,7 @@ export function createIndexRouter(config) {
   // synchronously rather than kicking off a tracked job/progress modal.
   // Still runs through the same runExclusive mutex as everything else that
   // touches the manifest, so it can't race a concurrent Publish.
-  router.post("/submit", requireAuth, upload.single("audio"), async (req, res) => {
+  router.post("/submit", requireAuth, upload.single("audio"), requireLock(lockStore), async (req, res) => {
     const displayName = req.session.displayName;
     const { title, artist } = req.body ?? {};
 

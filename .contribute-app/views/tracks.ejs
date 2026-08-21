@@ -1,4 +1,5 @@
 <%- include('partials/header', { containerModifier: 'container-wide' }) %>
+<%- include('partials/deck-bar') %>
   <h1>Tracks</h1>
   <p class="subtitle">
     <a href="/">Add a track</a>
@@ -20,7 +21,7 @@
             <% pendingAddRows.forEach((row) => { %>
               <li>
                 <%= row.trackName %> <span class="hint">(queued by <%= row.addedBy %>)</span>
-                <form method="POST" action="/tracks/delete" class="inline-form pending-action-form" data-confirm='Cancel queuing "<%= row.trackName %>"? It will never be published.'>
+                <form method="POST" action="/tracks/delete" class="inline-form pending-action-form lock-gated" data-confirm='Cancel queuing "<%= row.trackName %>"? It will never be published.'>
                   <input type="hidden" name="filename" value="<%= row.filename %>">
                   <button type="submit" class="link-button delete-button">cancel</button>
                 </form>
@@ -34,7 +35,7 @@
             <% pendingDeleteRows.forEach((row) => { %>
               <li>
                 <%= row.trackName %>
-                <form method="POST" action="/tracks/undo-delete" class="inline-form pending-action-form">
+                <form method="POST" action="/tracks/undo-delete" class="inline-form pending-action-form lock-gated">
                   <input type="hidden" name="filename" value="<%= row.filename %>">
                   <button type="submit" class="link-button">undo</button>
                 </form>
@@ -61,11 +62,13 @@
             Dry run
           </label>
         <% } %>
-        <button type="button" id="publish-button">Publish <%= pendingCount %> change<%= pendingCount === 1 ? '' : 's' %></button>
+        <p class="lock-hint">Press &ldquo;Start editing&rdquo; above before publishing.</p>
+        <button type="button" id="publish-button" class="lock-gated">Publish <%= pendingCount %> change<%= pendingCount === 1 ? '' : 's' %></button>
       </div>
     <% } else { %>
       <p class="hint">No pending changes.</p>
     <% } %>
+    <p class="lock-hint">Press &ldquo;Start editing&rdquo; above before marking a track for removal.</p>
     <div class="table-scroll">
       <table class="track-table">
         <thead>
@@ -85,7 +88,7 @@
               <td class="<%= row.addedAt ? '' : 'legacy' %>"><%= row.addedBy %></td>
               <td class="<%= row.addedAt ? '' : 'legacy' %>"><%= row.addedAt ? new Date(row.addedAt).toLocaleDateString() : 'legacy' %></td>
               <td>
-                <form method="POST" action="/tracks/delete" class="inline-form pending-action-form" data-confirm='Queue "<%= row.trackName %>" for removal? It will be removed from the mixtape the next time someone publishes.'>
+                <form method="POST" action="/tracks/delete" class="inline-form pending-action-form lock-gated" data-confirm='Queue "<%= row.trackName %>" for removal? It will be removed from the mixtape the next time someone publishes.'>
                   <input type="hidden" name="filename" value="<%= row.filename %>">
                   <button type="submit" class="link-button delete-button">delete</button>
                 </form>

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { log as logDefault } from "./logger.js";
 
@@ -53,6 +54,11 @@ export async function handleLogin(req, res, { log = logDefault } = {}) {
     req.session.authenticated = true;
     req.session.displayName = displayName;
     req.session.isAdmin = isAdmin;
+    // A real per-login identity, distinct from displayName (free text,
+    // never verified unique) — this is what the edit lock actually checks
+    // "do you hold it" against, so two different browser sessions typing
+    // the same display name can never be confused for one another.
+    req.session.sessionId = crypto.randomUUID();
     log(`Login succeeded: "${displayName}"${isAdmin ? " [admin]" : ""}`);
     return res.redirect("/");
   } catch (err) {

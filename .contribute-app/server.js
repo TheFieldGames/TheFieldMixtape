@@ -6,14 +6,19 @@ import { fileURLToPath } from "node:url";
 
 import { loadConfig } from "./src/config.js";
 import { log, logError } from "./src/logger.js";
+import { createLockStore } from "./src/editLock.js";
 import authRoutes from "./routes/auth.js";
 import { createIndexRouter } from "./routes/index.js";
 import { createTracksRouter } from "./routes/tracks.js";
 import { createJobsRouter } from "./routes/jobs.js";
+import { createLockRouter } from "./routes/lock.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const config = loadConfig();
+// One shared lock for the whole app (see src/editLock.js) — same
+// single-instance assumption as runExclusive/jobs.js.
+const lockStore = createLockStore();
 
 const app = express();
 app.set("view engine", "ejs");
@@ -41,9 +46,10 @@ app.use((req, res, next) => {
 });
 
 app.use(authRoutes);
-app.use(createIndexRouter(config));
-app.use(createTracksRouter(config));
+app.use(createIndexRouter(config, lockStore));
+app.use(createTracksRouter(config, lockStore));
 app.use(createJobsRouter());
+app.use(createLockRouter(lockStore));
 
 // Friendly handling for multer errors (e.g. file over the 100MB cap)
 // instead of a raw unhandled 500. POST /submit's client-side JS always

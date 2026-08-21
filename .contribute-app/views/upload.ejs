@@ -1,4 +1,5 @@
 <%- include('partials/header') %>
+<%- include('partials/deck-bar') %>
   <h1>Queue a track</h1>
   <p class="subtitle">
     Logged in as <strong><%= displayName %></strong>
@@ -17,7 +18,8 @@
     <p class="error" id="submit-error"><%= error %></p>
   <% } %>
   <p class="success" id="submit-success" hidden></p>
-  <form method="POST" action="/submit" enctype="multipart/form-data" id="upload-form">
+  <p class="lock-hint">Press &ldquo;Start editing&rdquo; above before queueing a track.</p>
+  <form method="POST" action="/submit" enctype="multipart/form-data" id="upload-form" class="lock-gated">
     <label>
       Audio file
       <input type="file" name="audio" accept="audio/*" required>

@@ -372,3 +372,98 @@ a {
   color: color-mix(in srgb, var(--fg) 50%, transparent);
   font-style: italic;
 }
+
+.deck-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.deck-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rec-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  border: 2px solid var(--error);
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.rec-dot.filled {
+  background: var(--error);
+}
+
+.rec-dot.pulsing {
+  animation: rec-pulse 1.3s ease-in-out infinite;
+}
+
+@keyframes rec-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rec-dot.pulsing {
+    animation: none;
+  }
+}
+
+.deck-timer {
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--fg) 65%, transparent);
+}
+
+.deck-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.idle-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--warning);
+  font-size: 0.8rem;
+}
+
+.idle-warning[hidden] {
+  display: none;
+}
+
+/* Lock-gated controls: dimmed and inert whenever the current session
+   doesn't hold the edit lock. Server-side enforcement (src/editLock.js's
+   requireLock middleware) is the real guard; this is just the matching UI
+   signal, same "convenience, not security" relationship the progress
+   modal's cancel-cutoff has with its own server-side check. */
+body[data-lock-state="idle"] .lock-gated,
+body[data-lock-state="other"] .lock-gated {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.lock-hint {
+  display: none;
+  font-size: 0.8rem;
+  font-style: italic;
+  color: color-mix(in srgb, var(--fg) 65%, transparent);
+  margin: -0.5rem 0 0.5rem;
+}
+
+body[data-lock-state="idle"] .lock-hint,
+body[data-lock-state="other"] .lock-hint {
+  display: block;
+}
