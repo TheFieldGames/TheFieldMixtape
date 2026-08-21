@@ -3,5 +3,6 @@ MixTapeWebPlan.md
 LinerNotes.html
 .contribute-app/node_modules/
 .contribute-app/.env
+.contribute-app/legacy-track-attribution.json
 /build/
 /convert files/

@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --env-file=.env server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "apply-legacy-attribution": "node --env-file=.env scripts/apply-legacy-attribution.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.658.0",

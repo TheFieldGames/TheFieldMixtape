@@ -1,0 +1,138 @@
+import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+
+// Bucket-root key (not under storage.TRACK_PREFIX), so it's structurally
+// invisible to listTracks()/downloadAllTracks() — same pattern as
+// bandwidth.js's USAGE_KEY. This is app state, not a track.
+export const MANIFEST_KEY = "manifest.json";
+
+// Marks a track that predates the manifest — the real author is known to
+// the maintainer and gets corrected individually later. Not a claim the
+// author is genuinely unknown, just "not yet backfilled with a real name."
+export const LEGACY_ADDED_BY = "TEMP";
+
+function defaultManifest() {
+  return { tracks: {}, pendingDeletes: [], publishLog: [] };
+}
+
+async function streamToString(stream) {
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+/** Reads the manifest, transparently treating a missing object as a fresh
+ * empty one — the caller never has to think about first-run/not-yet-created
+ * state themselves. Doesn't write anything. */
+export async function getManifest(client, bucket) {
+  try {
+    const resp = await client.send(new GetObjectCommand({ Bucket: bucket, Key: MANIFEST_KEY }));
+    const parsed = JSON.parse(await streamToString(resp.Body));
+    return { ...defaultManifest(), ...parsed };
+  } catch (err) {
+    if (err?.$metadata?.httpStatusCode === 404 || err?.name === "NotFound") {
+      return defaultManifest();
+    }
+    throw err;
+  }
+}
+
+async function saveManifest(client, bucket, manifest) {
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: MANIFEST_KEY,
+      Body: JSON.stringify(manifest),
+      ContentType: "application/json",
+    })
+  );
+}
+
+/** Records a newly-published track. Read-modify-write, same as
+ * bandwidth.recordPublish — safe under processSubmission's existing
+ * runExclusive mutex, no new concurrency mechanism needed. */
+export async function recordTrackAdded(client, bucket, filename, addedBy, { now = new Date() } = {}) {
+  const manifest = await getManifest(client, bucket);
+  const updated = {
+    ...manifest,
+    tracks: {
+      ...manifest.tracks,
+      [filename]: { addedBy, addedAt: now.toISOString(), status: "live" },
+    },
+  };
+  await saveManifest(client, bucket, updated);
+  return updated;
+}
+
+/** Drops a track's manifest entry entirely (used when a track is deleted —
+ * unlike recordTrackAdded/applyManualCorrections, there's nothing to keep
+ * around once the track itself is gone). A no-op (no write) if the given
+ * filename has no entry to begin with. */
+export async function removeTrack(client, bucket, filename) {
+  const manifest = await getManifest(client, bucket);
+  if (!(filename in manifest.tracks)) return manifest;
+  const remainingTracks = { ...manifest.tracks };
+  delete remainingTracks[filename];
+  const updated = { ...manifest, tracks: remainingTracks };
+  await saveManifest(client, bucket, updated);
+  return updated;
+}
+
+/**
+ * Fills in a manifest entry for any real track that doesn't have one yet —
+ * tracks that predate the manifest itself, or that otherwise slipped
+ * through (e.g. a manual out-of-band R2 change). Idempotent and cheap when
+ * there's nothing to do: reads the manifest, and only writes if at least
+ * one track was actually missing.
+ *
+ * `trackNames` should be the plain names from storage.listTracks()
+ * ("Title - Artist", no extension) — converted to filenames here since
+ * that's the manifest's key shape (matches storage.keyForFilename's target).
+ */
+export async function backfillLegacyTracks(client, bucket, trackNames, { now = new Date() } = {}) {
+  const manifest = await getManifest(client, bucket);
+  const missing = trackNames.filter((name) => !(`${name}.ogg` in manifest.tracks));
+  if (missing.length === 0) return manifest;
+
+  const updated = {
+    ...manifest,
+    tracks: {
+      ...manifest.tracks,
+      ...Object.fromEntries(
+        missing.map((name) => [
+          `${name}.ogg`,
+          { addedBy: LEGACY_ADDED_BY, addedAt: null, status: "live" },
+        ])
+      ),
+    },
+  };
+  await saveManifest(client, bucket, updated);
+  return updated;
+}
+
+/**
+ * Applies a batch of manually-supplied corrections (real addedBy/addedAt
+ * values for tracks that were backfilled as LEGACY_ADDED_BY) in a single
+ * read-modify-write, rather than one round trip per track. Each correction
+ * fully replaces that track's addedBy/addedAt/status; a filename with no
+ * existing manifest entry gets one created outright, so this also works for
+ * tracks manifest.js has never seen. `addedAt` is taken as-is (already
+ * resolved to an ISO string or a Date) — this function doesn't parse dates
+ * itself, so caller-side timezone handling (e.g. treating a bare date as
+ * local time in some zone) is the caller's responsibility.
+ */
+export async function applyManualCorrections(client, bucket, corrections) {
+  const manifest = await getManifest(client, bucket);
+  const updatedTracks = { ...manifest.tracks };
+  for (const { filename, addedBy, addedAt } of corrections) {
+    const existing = updatedTracks[filename];
+    updatedTracks[filename] = {
+      status: existing?.status || "live",
+      ...existing,
+      addedBy,
+      addedAt: addedAt instanceof Date ? addedAt.toISOString() : addedAt,
+    };
+  }
+  const updated = { ...manifest, tracks: updatedTracks };
+  await saveManifest(client, bucket, updated);
+  return updated;
+}
