@@ -15,10 +15,10 @@ Want to add a song? See [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 7. Can't Punk Me - JID
 8. DARE - Gorillaz
 9. Dear Maria, Count Me In - All Time Low
-10. Do I Wanna Know - Arctic Monkeys
-11. Don't Stop Me Now - Queen
-12. Don't Wait Up - Midnight Generation
-13. Dreaming - Wolf Parade
+10. Don't Stop Me Now - Queen
+11. Don't Wait Up - Midnight Generation
+12. Dreaming - Wolf Parade
+13. Electric Feel (Justice Remix) - MGMT, Justice
 14. Ella Baila
 15. Everywhere - Fleetwood Mac
 16. Fly - Sugar Gay
