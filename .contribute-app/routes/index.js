@@ -6,13 +6,14 @@ import { requireAuth, sanitizeDisplayName } from "../src/auth.js";
 import { runExclusive } from "../src/queue.js";
 import {
   processSubmission,
-  SubmissionError,
   THUNDERSTORE_URL,
   MAX_TRACKS,
   MAX_TRACK_FILE_SIZE_KB,
 } from "../src/publish.js";
 import * as storage from "../src/storage.js";
 import * as bandwidth from "../src/bandwidth.js";
+import * as jobs from "../src/jobs.js";
+import { segmentsFor } from "../src/stageWeights.js";
 import { log, logError } from "../src/logger.js";
 
 // 100MB cap per the plan — a normal .ogg/.mp3 track is a few MB, this is
@@ -56,10 +57,15 @@ export function createIndexRouter(config) {
       thunderstoreUrl: THUNDERSTORE_URL,
       maxTracks: MAX_TRACKS,
       maxTrackFileSizeKb: MAX_TRACK_FILE_SIZE_KB,
+      progressSegments: { real: segmentsFor("add"), dryRun: segmentsFor("add", { dryRun: true }) },
     });
   });
 
-  router.post("/submit", requireAuth, upload.single("audio"), async (req, res, next) => {
+  // Kicks the job off and returns {jobId} immediately — the client opens
+  // the progress modal and streams stage updates from GET
+  // /jobs/:jobId/events, then navigates to GET /jobs/:jobId/result once
+  // it's done. See routes/jobs.js and public/progress-modal.js.
+  router.post("/submit", requireAuth, upload.single("audio"), async (req, res) => {
     const displayName = req.session.displayName;
     const isAdmin = req.session.isAdmin === true;
     const { title, artist } = req.body ?? {};
@@ -68,53 +74,38 @@ export function createIndexRouter(config) {
     // hand-crafted request can't request a dry run either.
     const dryRun = isAdmin && req.body?.dryRun === "on";
 
-    const staticLocals = {
-      isAdmin,
-      thunderstoreUrl: THUNDERSTORE_URL,
-      maxTracks: MAX_TRACKS,
-      maxTrackFileSizeKb: MAX_TRACK_FILE_SIZE_KB,
-    };
-
     if (!req.file) {
-      return res.status(400).render("upload", {
-        displayName,
-        error: "Please choose an audio file to upload.",
-        usageInfo: null,
-        ...staticLocals,
-      });
+      return res.status(400).json({ error: "Please choose an audio file to upload." });
     }
     if (!title?.trim() || !artist?.trim()) {
-      return res.status(400).render("upload", {
-        displayName,
-        error: "Title and artist are both required.",
-        usageInfo: null,
-        ...staticLocals,
-      });
+      return res.status(400).json({ error: "Title and artist are both required." });
     }
 
-    try {
-      log(`Submission request received: "${title} - ${artist}" from ${displayName}${dryRun ? " [DRY RUN]" : ""}`);
-      const result = await runExclusive(() =>
-        processSubmission(
-          { uploadPath: req.file.path, title, artist, displayName: sanitizeDisplayName(displayName), dryRun },
-          config
-        )
-      );
-      res.render("result", { success: true, error: null, committedButNotPublished: false, ...result });
-    } catch (err) {
-      // Always log the full error server-side, even though the result page
-      // only shows err.message — found via real testing that relying on
-      // the browser-rendered message alone made a real failure hard to
-      // debug (message can be a summary; stack/full detail matters here).
-      logError("Submission failed:", err.stage ? `[stage: ${err.stage}] ` : "", err);
-      const committedButNotPublished = err instanceof SubmissionError ? err.committedButNotPublished : false;
-      res.status(500).render("result", {
-        success: false,
-        error: err.message,
-        committedButNotPublished,
-        dryRun,
+    log(`Submission request received: "${title} - ${artist}" from ${displayName}${dryRun ? " [DRY RUN]" : ""}`);
+    const jobId = jobs.createJob("add", { dryRun });
+
+    runExclusive(() =>
+      processSubmission(
+        { uploadPath: req.file.path, title, artist, displayName: sanitizeDisplayName(displayName), dryRun },
+        config,
+        {
+          onStageChange: (stage) => jobs.recordStage(jobId, stage),
+          checkCancelled: () => jobs.isCancelRequested(jobId),
+        }
+      )
+    )
+      .then((result) => jobs.completeJob(jobId, result))
+      .catch((err) => {
+        // Always log the full error server-side, even though the result
+        // page only shows err.message — found via real testing that
+        // relying on the browser-rendered message alone made a real
+        // failure hard to debug (message can be a summary; stack/full
+        // detail matters here).
+        logError("Submission failed:", err.stage ? `[stage: ${err.stage}] ` : "", err);
+        jobs.failJob(jobId, err);
       });
-    }
+
+    res.json({ jobId });
   });
 
   return router;

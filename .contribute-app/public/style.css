@@ -173,6 +173,114 @@ button[type="submit"]:disabled {
   font-size: inherit;
 }
 
+.link-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+  text-decoration: none;
+}
+
+.delete-button {
+  color: var(--error);
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 55%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal {
+  max-width: 420px;
+  width: calc(100% - 2rem);
+  padding: 1.5rem;
+  background: var(--card-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 35%);
+}
+
+.modal h2 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+}
+
+.progress-stage-label {
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+}
+
+.progress-bar {
+  position: relative;
+  width: 100%;
+  height: 0.75rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--border);
+}
+
+/* One bar-wide fill (not one per stage) — width is animated from JS
+   (transition-duration set to the current stage's own expected length) so
+   the bar visibly fills WHILE a long stage (e.g. tcli-publish) is running,
+   instead of jumping straight to "done" the instant the stage starts. The
+   diagonal stripe animation gives it a sense of motion even while width
+   itself is settled mid-transition — using a single element (rather than
+   one per stage) keeps the stripe pattern continuous across the whole bar
+   instead of resetting at each stage boundary. */
+.progress-bar-fill {
+  position: absolute;
+  inset: 0;
+  width: 0%;
+  background-color: var(--link);
+  background-image: linear-gradient(
+    135deg,
+    rgb(255 255 255 / 25%) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgb(255 255 255 / 25%) 50%,
+    rgb(255 255 255 / 25%) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 1rem 1rem;
+  animation: progress-stripes 0.6s linear infinite;
+  transition: width linear;
+}
+
+@keyframes progress-stripes {
+  from { background-position: 0 0; }
+  to { background-position: 1rem 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-bar-fill {
+    animation: none;
+  }
+}
+
+#progress-modal-note {
+  margin: 0.75rem 0 0;
+  min-height: 1.2em;
+}
+
+#progress-cancel-button {
+  margin-top: 1rem;
+}
+
+#progress-cancel-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+  text-decoration: none;
+}
+
 .error {
   color: var(--error);
 }
@@ -189,4 +297,40 @@ button[type="submit"]:disabled {
 
 a {
   color: var(--link);
+}
+
+.container-wide {
+  max-width: 640px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+.track-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.track-table th,
+.track-table td {
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.track-table th {
+  color: color-mix(in srgb, var(--fg) 65%, transparent);
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.track-table td.legacy {
+  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  font-style: italic;
 }

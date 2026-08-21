@@ -1,0 +1,11 @@
+<div id="progress-modal" class="modal-overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="progress-modal-title">
+    <h2 id="progress-modal-title">Working&hellip;</h2>
+    <p id="progress-modal-stage" class="progress-stage-label">Starting&hellip;</p>
+    <div class="progress-bar" id="progress-bar"></div>
+    <p id="progress-modal-note" class="hint"></p>
+    <button type="button" id="progress-cancel-button" class="link-button">Cancel</button>
+  </div>
+</div>
+<script>window.PROGRESS_SEGMENTS = <%- JSON.stringify(progressSegments) %>;</script>
+<script src="/progress-modal.js"></script>

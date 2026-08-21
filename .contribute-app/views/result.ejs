@@ -1,25 +1,31 @@
 <%- include('partials/header') %>
+  <% const isDelete = locals.action === 'delete'; %>
   <% if (success && dryRun) { %>
     <h1>Dry run successful</h1>
     <p>
-      <strong><%= trackName %></strong> converted, uploaded, and built successfully.
-      If this had been a real submission, it would have published as version
+      <strong><%= trackName %></strong>
+      <%= isDelete ? 'would be removed from the mixtape' : 'converted, uploaded, and built successfully' %>.
+      If this had been real, it would have published as version
       <strong><%= versionNumber %></strong>.
     </p>
     <p class="hint">Nothing was actually published to Thunderstore. See the isolated <code><%= branch %></code> branch on GitHub for the test commit.</p>
   <% } else if (success) { %>
-    <h1>Published</h1>
-    <p><strong><%= trackName %></strong> is now live as version <strong><%= versionNumber %></strong>.</p>
+    <h1><%= isDelete ? 'Removed' : 'Published' %></h1>
+    <% if (isDelete) { %>
+      <p><strong><%= trackName %></strong> has been removed. The mixtape is now at version <strong><%= versionNumber %></strong>.</p>
+    <% } else { %>
+      <p><strong><%= trackName %></strong> is now live as version <strong><%= versionNumber %></strong>.</p>
+    <% } %>
     <p><a href="<%= thunderstoreUrl %>" target="_blank" rel="noopener">View on Thunderstore</a></p>
   <% } else { %>
     <h1>Something went wrong<% if (dryRun) { %> (dry run)<% } %></h1>
     <p class="error"><%= error %></p>
     <% if (committedButNotPublished) { %>
       <p class="warning">
-        The track was committed to the repo but publishing to Thunderstore failed.
+        The change was committed to the repo but publishing to Thunderstore failed.
         A maintainer needs to manually finish the publish step for this to go live.
       </p>
     <% } %>
   <% } %>
-  <p><a href="/">Add another track</a></p>
+  <p><a href="/">Add another track</a> &mdash; <a href="/tracks">View tracks</a></p>
 <%- include('partials/footer') %>

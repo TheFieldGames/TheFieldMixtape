@@ -8,7 +8,8 @@ import { loadConfig } from "./src/config.js";
 import { log, logError } from "./src/logger.js";
 import authRoutes from "./routes/auth.js";
 import { createIndexRouter } from "./routes/index.js";
-import { THUNDERSTORE_URL, MAX_TRACKS, MAX_TRACK_FILE_SIZE_KB } from "./src/publish.js";
+import { createTracksRouter } from "./routes/tracks.js";
+import { createJobsRouter } from "./routes/jobs.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -41,21 +42,17 @@ app.use((req, res, next) => {
 
 app.use(authRoutes);
 app.use(createIndexRouter(config));
+app.use(createTracksRouter(config));
+app.use(createJobsRouter());
 
 // Friendly handling for multer errors (e.g. file over the 100MB cap)
-// instead of a raw unhandled 500.
+// instead of a raw unhandled 500. POST /submit's client-side JS always
+// expects JSON now (it starts a job and shows the progress modal), so this
+// responds in kind rather than re-rendering the upload page's HTML.
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     logError("Upload rejected by multer:", err.message);
-    return res.status(400).render("upload", {
-      displayName: req.session?.displayName,
-      isAdmin: req.session?.isAdmin === true,
-      error: `Upload error: ${err.message}`,
-      usageInfo: null,
-      thunderstoreUrl: THUNDERSTORE_URL,
-      maxTracks: MAX_TRACKS,
-      maxTrackFileSizeKb: MAX_TRACK_FILE_SIZE_KB,
-    });
+    return res.status(400).json({ error: `Upload error: ${err.message}` });
   }
   logError("Unhandled error:", err);
   res.status(500).send("Something went wrong.");

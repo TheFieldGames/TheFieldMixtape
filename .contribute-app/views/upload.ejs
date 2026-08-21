@@ -3,6 +3,8 @@
   <p class="subtitle">
     Logged in as <strong><%= displayName %></strong>
     &mdash;
+    <a href="/tracks">view tracks</a>
+    &mdash;
     <form method="POST" action="/logout" class="inline-form">
       <button type="submit" class="link-button">log out</button>
     </form>
@@ -25,7 +27,7 @@
     <% } %>
   </div>
   <% if (error) { %>
-    <p class="error"><%= error %></p>
+    <p class="error" id="submit-error"><%= error %></p>
   <% } %>
   <form method="POST" action="/submit" enctype="multipart/form-data" id="upload-form">
     <label>
@@ -52,21 +54,36 @@
     <% } %>
     <button type="submit" id="submit-button">Add to mixtape</button>
   </form>
-  <p id="wait-message" class="wait-message" hidden>
-    Converting, uploading, and publishing &mdash; this usually takes 1&ndash;2 minutes. Please don&rsquo;t close this page.
-  </p>
+<%- include('partials/progress-modal') %>
   <script>
-    document.getElementById('upload-form').addEventListener('submit', () => {
+    document.getElementById('upload-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
       const dryRunCheckbox = document.getElementById('dry-run-checkbox');
       const isDryRun = dryRunCheckbox ? dryRunCheckbox.checked : false;
       const button = document.getElementById('submit-button');
+      const existingError = document.getElementById('submit-error');
+      if (existingError) existingError.remove();
+
       button.disabled = true;
-      button.textContent = isDryRun ? 'Running dry run...' : 'Publishing...';
-      const waitMessage = document.getElementById('wait-message');
-      waitMessage.textContent = isDryRun
-        ? 'Converting, uploading, and building — this usually takes 1–2 minutes. Nothing will be published for real. Please don’t close this page.'
-        : 'Converting, uploading, and publishing — this usually takes 1–2 minutes. Please don’t close this page.';
-      waitMessage.hidden = false;
+      button.textContent = isDryRun ? 'Starting dry run...' : 'Starting...';
+
+      try {
+        const response = await fetch('/submit', { method: 'POST', body: new FormData(form) });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Something went wrong.');
+        }
+        openProgressModal({ jobId: data.jobId, type: 'add', dryRun: isDryRun });
+      } catch (err) {
+        const p = document.createElement('p');
+        p.className = 'error';
+        p.id = 'submit-error';
+        p.textContent = err.message;
+        form.insertAdjacentElement('beforebegin', p);
+        button.disabled = false;
+        button.textContent = 'Add to mixtape';
+      }
     });
   </script>
 <%- include('partials/footer') %>
