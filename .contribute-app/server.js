@@ -8,6 +8,7 @@ import { loadConfig } from "./src/config.js";
 import { log, logError } from "./src/logger.js";
 import authRoutes from "./routes/auth.js";
 import { createIndexRouter } from "./routes/index.js";
+import { THUNDERSTORE_URL, MAX_TRACKS, MAX_TRACK_FILE_SIZE_KB } from "./src/publish.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -48,8 +49,12 @@ app.use((err, req, res, next) => {
     logError("Upload rejected by multer:", err.message);
     return res.status(400).render("upload", {
       displayName: req.session?.displayName,
+      isAdmin: req.session?.isAdmin === true,
       error: `Upload error: ${err.message}`,
       usageInfo: null,
+      thunderstoreUrl: THUNDERSTORE_URL,
+      maxTracks: MAX_TRACKS,
+      maxTrackFileSizeKb: MAX_TRACK_FILE_SIZE_KB,
     });
   }
   logError("Unhandled error:", err);

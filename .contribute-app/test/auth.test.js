@@ -114,6 +114,60 @@ test("handleLogin: missing display name renders 400 without ever checking the pa
   assert.equal(req.session.authenticated, undefined);
 });
 
+test("handleLogin: ADMIN_PASSWORD_HASH also logs in, and flags the session as admin", async () => {
+  const appHash = await bcrypt.hash("shared-secret", 10);
+  const adminHash = await bcrypt.hash("itsme", 10);
+  const prevApp = process.env.APP_PASSWORD_HASH;
+  const prevAdmin = process.env.ADMIN_PASSWORD_HASH;
+  process.env.APP_PASSWORD_HASH = appHash;
+  process.env.ADMIN_PASSWORD_HASH = adminHash;
+  try {
+    const req = { body: { password: "itsme", name: "Rob" }, session: {} };
+    await handleLogin(req, fakeRes(), { log: () => {} });
+    assert.equal(req.session.authenticated, true);
+    assert.equal(req.session.isAdmin, true);
+  } finally {
+    process.env.APP_PASSWORD_HASH = prevApp;
+    process.env.ADMIN_PASSWORD_HASH = prevAdmin;
+  }
+});
+
+test("handleLogin: the regular shared password logs in without the admin flag", async () => {
+  const appHash = await bcrypt.hash("shared-secret", 10);
+  const adminHash = await bcrypt.hash("itsme", 10);
+  const prevApp = process.env.APP_PASSWORD_HASH;
+  const prevAdmin = process.env.ADMIN_PASSWORD_HASH;
+  process.env.APP_PASSWORD_HASH = appHash;
+  process.env.ADMIN_PASSWORD_HASH = adminHash;
+  try {
+    const req = { body: { password: "shared-secret", name: "Alex" }, session: {} };
+    await handleLogin(req, fakeRes(), { log: () => {} });
+    assert.equal(req.session.authenticated, true);
+    assert.equal(req.session.isAdmin, false);
+  } finally {
+    process.env.APP_PASSWORD_HASH = prevApp;
+    process.env.ADMIN_PASSWORD_HASH = prevAdmin;
+  }
+});
+
+test("handleLogin: admin password is rejected when ADMIN_PASSWORD_HASH isn't configured at all", async () => {
+  const appHash = await bcrypt.hash("shared-secret", 10);
+  const prevApp = process.env.APP_PASSWORD_HASH;
+  const prevAdmin = process.env.ADMIN_PASSWORD_HASH;
+  process.env.APP_PASSWORD_HASH = appHash;
+  delete process.env.ADMIN_PASSWORD_HASH;
+  try {
+    const req = { body: { password: "itsme", name: "Rob" }, session: {} };
+    const res = fakeRes();
+    await handleLogin(req, res, { log: () => {} });
+    assert.equal(req.session.authenticated, undefined);
+    assert.equal(res.statusCode, 401);
+  } finally {
+    process.env.APP_PASSWORD_HASH = prevApp;
+    process.env.ADMIN_PASSWORD_HASH = prevAdmin;
+  }
+});
+
 test("handleLogout clears the session and redirects to /login", () => {
   const req = { session: { authenticated: true, displayName: "Alex" } };
   const res = fakeRes();

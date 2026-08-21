@@ -28,6 +28,7 @@ export function createIndexRouter(config) {
 
   router.get("/", requireAuth, async (req, res) => {
     const displayName = req.session.displayName;
+    const isAdmin = req.session.isAdmin === true;
 
     // Best-effort: a transient R2 read hiccup here shouldn't block the
     // whole upload page from loading — degrade to "usage info unavailable"
@@ -49,6 +50,7 @@ export function createIndexRouter(config) {
 
     res.render("upload", {
       displayName,
+      isAdmin,
       error: null,
       usageInfo,
       thunderstoreUrl: THUNDERSTORE_URL,
@@ -59,10 +61,15 @@ export function createIndexRouter(config) {
 
   router.post("/submit", requireAuth, upload.single("audio"), async (req, res, next) => {
     const displayName = req.session.displayName;
+    const isAdmin = req.session.isAdmin === true;
     const { title, artist } = req.body ?? {};
-    const dryRun = req.body?.dryRun === "on";
+    // Dry Run is only ever offered in the UI to admin sessions — enforce
+    // that server-side too, not just by hiding the checkbox, so a
+    // hand-crafted request can't request a dry run either.
+    const dryRun = isAdmin && req.body?.dryRun === "on";
 
     const staticLocals = {
+      isAdmin,
       thunderstoreUrl: THUNDERSTORE_URL,
       maxTracks: MAX_TRACKS,
       maxTrackFileSizeKb: MAX_TRACK_FILE_SIZE_KB,

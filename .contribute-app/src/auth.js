@@ -25,6 +25,17 @@ export function sanitizeDisplayName(name) {
   return trimmed.slice(0, 100);
 }
 
+// ADMIN_PASSWORD_HASH is optional (unlike APP_PASSWORD_HASH) — a second,
+// separate password that also logs a user in, but additionally flags the
+// session as admin (currently just: unlocks the Dry Run option in the UI,
+// server-enforced too, not just hidden). Deliberately not required config:
+// deployments that don't set it simply never have an admin path, rather
+// than failing to boot.
+async function verifyAdminPassword(password) {
+  if (!process.env.ADMIN_PASSWORD_HASH) return false;
+  return bcrypt.compare(password, process.env.ADMIN_PASSWORD_HASH);
+}
+
 // Never logs the submitted password itself, only that an attempt happened
 // and whether it succeeded — this is a shared password, so a failed
 // attempt is worth seeing in the terminal, but the value never should be.
@@ -32,14 +43,17 @@ export async function handleLogin(req, res, { log = logDefault } = {}) {
   const { password, name } = req.body ?? {};
   try {
     const displayName = sanitizeDisplayName(name);
-    const ok = await verifyPassword(password || "", process.env.APP_PASSWORD_HASH);
+    const pw = password || "";
+    const isAdmin = await verifyAdminPassword(pw);
+    const ok = isAdmin || (await verifyPassword(pw, process.env.APP_PASSWORD_HASH));
     if (!ok) {
       log(`Login failed (wrong password) for name "${displayName}"`);
       return res.status(401).render("login", { error: "Incorrect password" });
     }
     req.session.authenticated = true;
     req.session.displayName = displayName;
-    log(`Login succeeded: "${displayName}"`);
+    req.session.isAdmin = isAdmin;
+    log(`Login succeeded: "${displayName}"${isAdmin ? " [admin]" : ""}`);
     return res.redirect("/");
   } catch (err) {
     log(`Login attempt rejected: ${err.message}`);

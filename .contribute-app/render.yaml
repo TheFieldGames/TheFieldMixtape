@@ -27,6 +27,10 @@ services:
         value: 3000
       - key: APP_PASSWORD_HASH
         sync: false
+      # Optional second password (see .env.example) — unlocks Dry Run.
+      # Not required to boot; leave unset in the dashboard to disable it.
+      - key: ADMIN_PASSWORD_HASH
+        sync: false
       - key: SESSION_SECRET
         generateValue: true
       - key: GITHUB_PAT

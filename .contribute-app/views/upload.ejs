@@ -40,14 +40,16 @@
       Artist
       <input type="text" name="artist" required>
     </label>
-    <label class="checkbox-label">
-      <input type="checkbox" name="dryRun" id="dry-run-checkbox">
-      Dry run
-    </label>
-    <p class="hint">
-      Tests conversion, upload, and packaging for real, but stops before actually
-      publishing to Thunderstore &mdash; nothing goes live.
-    </p>
+    <% if (isAdmin) { %>
+      <label class="checkbox-label">
+        <input type="checkbox" name="dryRun" id="dry-run-checkbox">
+        Dry run
+      </label>
+      <p class="hint">
+        Tests conversion, upload, and packaging for real, but stops before actually
+        publishing to Thunderstore &mdash; nothing goes live.
+      </p>
+    <% } %>
     <button type="submit" id="submit-button">Add to mixtape</button>
   </form>
   <p id="wait-message" class="wait-message" hidden>
@@ -55,7 +57,8 @@
   </p>
   <script>
     document.getElementById('upload-form').addEventListener('submit', () => {
-      const isDryRun = document.getElementById('dry-run-checkbox').checked;
+      const dryRunCheckbox = document.getElementById('dry-run-checkbox');
+      const isDryRun = dryRunCheckbox ? dryRunCheckbox.checked : false;
       const button = document.getElementById('submit-button');
       button.disabled = true;
       button.textContent = isDryRun ? 'Running dry run...' : 'Publishing...';
