@@ -1,15 +1,15 @@
 # Adding a song
 
-No git or coding knowledge needed — just your browser.
+No git or coding knowledge needed.
 
-1. Open the [`my mixtape`](../my%20mixtape) folder on GitHub.
-2. Click **Add file** → **Upload files**.
-3. Drag in your `.ogg` file. Name it `Song Title - Artist.ogg` (that filename becomes the tracklist entry, so match the existing style).
-4. Scroll down. Under "Commit changes," pick **"Create a new branch for this commit and start a pull request"** — **not** "Commit directly to the main branch." This step matters: there's no automated gate stopping a direct commit to `main` from immediately publishing, so a PR is the only review step in the process. Please don't skip it.
-5. Click **Propose changes**, then **Create pull request**.
+## If you have app access
 
-That's it. The tracklist in `README.md` updates itself automatically once you upload. A maintainer reviews and merges your pull request, and the mixtape mod republishes with your track included.
+Go to **[thefieldmixtape.onrender.com](https://thefieldmixtape.onrender.com)** and log in with the shared password and your name. Upload your track, and the app takes care of everything else — converting it, storing it, updating the tracklist, and publishing the update — usually within a couple of minutes. There's no PR, no waiting on a maintainer, and no separate review step; your track goes live as part of that one submission.
 
-A couple of things to know:
-- Browser uploads are capped at 25MB per file — a normal `.ogg` track (a few MB) is well under that.
-- Only `.ogg` files belong in `my mixtape/` — other formats won't get picked up.
+There's also a **dry run** option on the app if you just want to test the process without actually publishing anything.
+
+## If you don't have app access
+
+The app is currently limited to a small trusted group with a shared password — it's not open to the public yet. If you're not in that group, please [open an issue](../../issues/new) (or contact a maintainer directly) with the track you'd like added, and someone will add it for you.
+
+Note: uploading a file directly to the `my mixtape` folder via GitHub's web UI no longer works as a way to contribute — tracks are stored separately from git now, so a file added that way would never actually make it into the published mod.
