@@ -168,6 +168,15 @@ body::before {
   line-height: 1.15;
 }
 
+.label-strip h1 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.label-strip h1 a:hover {
+  text-decoration: underline;
+}
+
 .label-strip p {
   font-family: "Inter", sans-serif;
   font-size: 0.72rem;
@@ -1124,12 +1133,28 @@ body[data-lock-state="other"] .lock-hint {
   }
 }
 
+.batch-quota,
+.batch-link {
+  padding-right: 1.1rem;
+  border-right: 1px solid var(--border-subtle);
+}
+
 .batch-quota {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding-right: 1.1rem;
-  border-right: 1px solid var(--border-subtle);
+}
+
+.batch-link {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.batch-link:hover {
+  color: var(--text-cream);
+  text-decoration: underline;
 }
 
 .batch-quota-track {

@@ -12,7 +12,7 @@ import { createIndexRouter } from "./routes/index.js";
 import { createTracksRouter } from "./routes/tracks.js";
 import { createJobsRouter } from "./routes/jobs.js";
 import { createLockRouter } from "./routes/lock.js";
-import { SubmissionError } from "./src/publish.js";
+import { SubmissionError, THUNDERSTORE_URL } from "./src/publish.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -32,6 +32,11 @@ const lockStore = createLockStore({
 const app = express();
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
+// Available in every view render automatically (Express merges app.locals
+// into res.render's locals) — avoids threading thunderstoreUrl through
+// every individual res.render call across routes/auth.js, src/auth.js, and
+// routes/tracks.js.
+app.locals.thunderstoreUrl = THUNDERSTORE_URL;
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.urlencoded({ extended: false }));
 app.use(

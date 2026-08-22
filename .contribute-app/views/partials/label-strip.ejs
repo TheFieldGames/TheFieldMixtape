@@ -1,6 +1,6 @@
 <div class="label-strip">
   <div class="label-main">
-    <h1><%= title %></h1>
+    <h1><% if (locals.titleHref) { %><a href="<%= titleHref %>" target="_blank" rel="noopener"><%= title %></a><% } else { %><%= title %><% } %></h1>
     <% if (locals.subtitle) { %><p><%= subtitle %></p><% } %>
   </div>
   <% if (locals.sideLetter) { %>
