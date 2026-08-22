@@ -3,6 +3,7 @@ import { Router } from "express";
 import { requireAuth, sanitizeDisplayName } from "../src/auth.js";
 import { runExclusive } from "../src/queue.js";
 import { requireLock, touchOnStageChange } from "../src/editLock.js";
+import { notifyPublish } from "../src/discord.js";
 import { queueTrackDelete, cancelQueuedDeletion } from "../src/queueActions.js";
 import { processPublish, SubmissionError, MAX_TRACKS, MAX_TRACK_FILE_SIZE_KB } from "../src/publish.js";
 import * as storage from "../src/storage.js";
@@ -191,7 +192,17 @@ export function createTracksRouter(config, lockStore) {
         checkCancelled: () => jobs.isCancelRequested(jobId),
       })
     )
-      .then((result) => jobs.completeJob(jobId, result))
+      .then((result) => {
+        // Never for a dry run — nothing actually went live, so a "what's
+        // new" notification would be misleading. Unawaited/fire-and-forget
+        // for the same reason as notifyLogin: it already catches its own
+        // errors, and a slow/broken webhook must never hold up completing
+        // the job the user is actively watching in the progress modal.
+        if (!result.dryRun) {
+          notifyPublish({ displayName: sanitizeDisplayName(displayName), ...result });
+        }
+        jobs.completeJob(jobId, result);
+      })
       .catch((err) => {
         logError("Publish failed:", err.stage ? `[stage: ${err.stage}] ` : "", err);
         jobs.failJob(jobId, err);
