@@ -49,12 +49,19 @@ body {
    multi-page app — every route is a real page load) instead of swapping in
    a fresh image each time, which is what removes the reload flash between
    e.g. /login and /. */
+/* Bottom-biased, not centered: the cassette itself ("The Field" label)
+   sits in the bottom third of both source photos, and `cover` crops
+   whatever doesn't fit — center-anchoring was cropping the cassette out
+   from behind the sticky footer/batch bar. Pure `bottom` (100%) fixed
+   that but overcorrected, cropping almost everything above the cassette
+   (the plane wreck, most of the sky) — 78% keeps the cassette safely in
+   frame with real margin to spare, while restoring most of that context. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
-  background: url("/beach-mixtape.jpg") center center / cover no-repeat;
+  background: url("/beach-mixtape.jpg") center 78% / cover no-repeat;
   view-transition-name: page-background;
 }
 
@@ -63,6 +70,12 @@ body::before {
 @media (max-width: 768px) {
   body::before {
     background-image: url("/beach-mixtape-mobile.jpg");
+    /* The mobile crop is a much taller portrait image, so `cover` already
+       scales/crops it more aggressively than the desktop photo on a narrow
+       viewport — a slightly lower bias than desktop's 78% keeps the
+       cassette comfortably clear of the footer without zooming in further
+       than necessary. */
+    background-position: center 74%;
   }
 }
 
@@ -633,7 +646,15 @@ body[data-lock-state="other"] .lock-hint {
 .batch-layout {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 2rem 1.5rem 7rem;
+  padding: 2rem 1.5rem;
+  /* Bottom clearance for the fixed .batch-bar footer below. Its rendered
+     height isn't constant — flex-wrap plus up to two full-width
+     .lock-hint rows depending on viewport width and lock state — so a
+     ResizeObserver in tracks.ejs's inline script measures it and sets
+     --batch-bar-height. The 112px fallback only covers the brief window
+     before that JS runs; the extra 1.5rem is breathing room above the
+     raw bar height either way. */
+  padding-bottom: calc(var(--batch-bar-height, 112px) + 1.5rem);
 }
 
 /* Both the top-bar (error state) and account-bar (name/log-out) sit
@@ -1075,6 +1096,32 @@ body[data-lock-state="other"] .lock-hint {
   margin: 0;
   flex-basis: 100%;
   text-align: center;
+}
+
+/* On a narrow viewport, the bar's items (quota, summary, admin checkbox,
+   Publish, Clear batch, up to two full-width .lock-hint lines) wrap onto
+   as many as 6-7 stacked rows — easily 400px+, covering nearly half a
+   phone screen. Repositioning the background photo can't outrun a footer
+   that large; shrinking the footer's actual footprint is the real fix.
+   The deck bar above already explains whether you can edit, so the two
+   .lock-hint lines here are redundant on top of that and the cheapest
+   thing to cut. !important is needed to beat both the inline
+   style="display: block" on the "nothing queued" hint and the
+   body[data-lock-state] rule that shows the other one. */
+@media (max-width: 640px) {
+  .batch-bar {
+    padding: 0.6rem 0.9rem;
+    gap: 0.6rem 1rem;
+  }
+
+  .batch-bar .lock-hint {
+    display: none !important;
+  }
+
+  .batch-summary {
+    font-size: 0.7rem;
+    gap: 0.6rem;
+  }
 }
 
 .batch-quota {
