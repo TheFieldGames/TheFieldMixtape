@@ -12,6 +12,7 @@ import { createIndexRouter } from "./routes/index.js";
 import { createTracksRouter } from "./routes/tracks.js";
 import { createJobsRouter } from "./routes/jobs.js";
 import { createLockRouter } from "./routes/lock.js";
+import { SubmissionError } from "./src/publish.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -59,14 +60,20 @@ app.use(createTracksRouter(config, lockStore));
 app.use(createJobsRouter());
 app.use(createLockRouter(lockStore));
 
-// Friendly handling for multer errors (e.g. file over the 100MB cap)
-// instead of a raw unhandled 500. POST /submit's client-side JS always
-// expects JSON now (it starts a job and shows the progress modal), so this
-// responds in kind rather than re-rendering the upload page's HTML.
+// Friendly handling for multer errors (e.g. file over the 100MB cap, or
+// mp3FileFilter's SubmissionError rejecting a non-.mp3 upload) instead of a
+// raw unhandled 500 — both surface here since they're thrown from inside
+// multer's own middleware (upload.single), before the route handler ever
+// runs, so the route's own try/catch never sees them. POST /submit's
+// client-side JS always expects JSON, so this responds in kind.
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     logError("Upload rejected by multer:", err.message);
     return res.status(400).json({ error: `Upload error: ${err.message}` });
+  }
+  if (err instanceof SubmissionError) {
+    logError("Upload rejected:", err.message);
+    return res.status(400).json({ error: err.message });
   }
   logError("Unhandled error:", err);
   res.status(500).send("Something went wrong.");

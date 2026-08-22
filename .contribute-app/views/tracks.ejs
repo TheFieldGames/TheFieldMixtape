@@ -71,10 +71,10 @@
         <p class="lock-hint">Press &ldquo;Start editing&rdquo; above to add or remove tracks.</p>
         <div class="field">
           <div class="file-row lock-gated">
-            <input type="file" id="file-picker" accept="audio/*" multiple>
+            <input type="file" id="file-picker" accept="audio/mpeg,.mp3" multiple>
           </div>
           <p class="hint" id="file-count">No files selected</p>
-          <p class="file-helper">Each file must convert to under <%= maxTrackFileSizeKb %>KB. Up to <%= maxTracks %> tracks total on the tape.</p>
+          <p class="file-helper">.mp3 only. Each file must convert to under <%= maxTrackFileSizeKb %>KB. Up to <%= maxTracks %> tracks total on the tape.</p>
         </div>
         <div class="staged-list" id="staged-list" hidden></div>
         <p class="error" id="add-queue-error"></p>
@@ -265,9 +265,20 @@
 
       if (filePicker) {
         filePicker.addEventListener('change', () => {
+          // Immediate client-side feedback only — the server (mp3FileFilter
+          // in routes/index.js) is the real, authoritative check, since this
+          // one is trivially bypassed by anyone not using the browser UI.
+          const rejected = [];
           Array.from(filePicker.files).forEach((file) => {
+            if (!/\.mp3$/i.test(file.name)) {
+              rejected.push(file.name);
+              return;
+            }
             staged.push({ file, guess: guessFromFilename(file.name), id: ++stagedSeq });
           });
+          if (rejected.length > 0) {
+            addQueueError.textContent = `Only .mp3 files are accepted — skipped: ${rejected.join(', ')}`;
+          }
           filePicker.value = '';
           renderStaged();
         });

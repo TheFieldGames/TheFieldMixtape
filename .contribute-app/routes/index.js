@@ -7,14 +7,28 @@ import { runExclusive } from "../src/queue.js";
 import { requireLock } from "../src/editLock.js";
 import { queueTrackAdd } from "../src/queueActions.js";
 import { SubmissionError } from "../src/publish.js";
+import { isMp3Filename } from "../src/filename.js";
 import { log, logError } from "../src/logger.js";
 
-// 100MB cap per the plan — a normal .ogg/.mp3 track is a few MB, this is
-// generous headroom, not a real ceiling. ffmpeg is the real format
-// validator, so no strict mimetype allowlist here.
+// Extension only, not the browser-reported mimetype (client-supplied,
+// easily wrong/spoofed, not worth trusting) — matches the trust level of
+// everything else in this app. Without this, a non-.mp3 file would sail
+// through to ffmpeg and only fail there with a raw, unfriendly ffmpeg
+// error surfaced as a 500; rejecting up front gives a clean 400 instead,
+// before any disk I/O or conversion work happens.
+function mp3FileFilter(req, file, cb) {
+  if (!isMp3Filename(file.originalname)) {
+    return cb(new SubmissionError(`"${file.originalname}" isn't an .mp3 file. Only .mp3 uploads are accepted.`));
+  }
+  cb(null, true);
+}
+
+// 100MB cap per the plan — a normal .mp3 track is a few MB, this is
+// generous headroom, not a real ceiling.
 const upload = multer({
   dest: os.tmpdir(),
   limits: { fileSize: 100 * 1024 * 1024 },
+  fileFilter: mp3FileFilter,
 });
 
 export function createIndexRouter(config, lockStore) {
