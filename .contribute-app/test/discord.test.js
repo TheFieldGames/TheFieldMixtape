@@ -12,6 +12,36 @@ function fakeFetch(response = { ok: true, status: 200 }) {
   return fn;
 }
 
+// Returns a different response on each successive call — used to simulate
+// "429, then a real 200 on retry" without a real network.
+function fakeFetchSequence(...responses) {
+  const calls = [];
+  const fn = async (url, options) => {
+    calls.push({ url, options });
+    return responses[Math.min(calls.length - 1, responses.length - 1)];
+  };
+  fn.calls = calls;
+  return fn;
+}
+
+function rateLimitResponse(retryAfterSeconds) {
+  return {
+    ok: false,
+    status: 429,
+    json: async () => ({ message: "You are being rate limited.", retry_after: retryAfterSeconds, global: false }),
+    headers: { get: () => String(retryAfterSeconds) },
+  };
+}
+
+function fakeSleep() {
+  const waits = [];
+  const fn = async (ms) => {
+    waits.push(ms);
+  };
+  fn.waits = waits;
+  return fn;
+}
+
 test("notifyLogin does nothing (never calls fetch) when no webhook URL is configured", async () => {
   const fetchFn = fakeFetch();
   await notifyLogin({ displayName: "Rob" }, { webhookUrl: undefined, fetchFn });
@@ -165,4 +195,57 @@ test("a non-ok webhook response for a publish notification is logged, not thrown
     )
   );
   assert.ok(logLines.some((l) => l.includes("500")));
+});
+
+// --- 429 retry (see the doc comment on postToDiscord in src/discord.js) ---
+
+test("a 429 is retried once, waiting the exact retry_after Discord requested, and succeeds if the retry lands", async () => {
+  const fetchFn = fakeFetchSequence(rateLimitResponse(0.5), { ok: true, status: 200 });
+  const sleepFn = fakeSleep();
+  const logLines = [];
+
+  await notifyLogin(
+    { displayName: "Rob" },
+    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, logError: (...args) => logLines.push(args.join(" ")) }
+  );
+
+  assert.equal(fetchFn.calls.length, 2, "the original request plus exactly one retry");
+  assert.deepEqual(sleepFn.waits, [500], "waited retry_after (0.5s) converted to milliseconds");
+  assert.equal(logLines.length, 0, "a retry that succeeds logs nothing — it's not a failure from the caller's perspective");
+});
+
+test("a 429 followed by a second 429 only retries once and logs the final failure", async () => {
+  const fetchFn = fakeFetchSequence(rateLimitResponse(0.2), rateLimitResponse(0.2));
+  const sleepFn = fakeSleep();
+  const logLines = [];
+
+  await notifyLogin(
+    { displayName: "Rob" },
+    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, logError: (...args) => logLines.push(args.join(" ")) }
+  );
+
+  assert.equal(fetchFn.calls.length, 2, "never more than one retry, even if the retry is also rate limited");
+  assert.equal(sleepFn.waits.length, 1);
+  assert.ok(logLines.some((l) => l.includes("429")));
+});
+
+test("the retry wait is capped, regardless of how long Discord asks for", async () => {
+  const fetchFn = fakeFetchSequence(rateLimitResponse(60), { ok: true, status: 200 });
+  const sleepFn = fakeSleep();
+
+  await notifyLogin({ displayName: "Rob" }, { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, logError: () => {} });
+
+  assert.ok(sleepFn.waits[0] <= 5000, `waited ${sleepFn.waits[0]}ms, expected the 5s cap to apply`);
+});
+
+test("notifyPublish also retries a 429 the same way", async () => {
+  const fetchFn = fakeFetchSequence(rateLimitResponse(0.1), { ok: true, status: 200 });
+  const sleepFn = fakeSleep();
+
+  await notifyPublish(
+    { displayName: "Rob", added: ["A - B"], deleted: [], versionNumber: "1.0.0" },
+    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, logError: () => {} }
+  );
+
+  assert.equal(fetchFn.calls.length, 2);
 });
