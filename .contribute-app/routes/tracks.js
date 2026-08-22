@@ -2,7 +2,7 @@ import { Router } from "express";
 
 import { requireAuth, sanitizeDisplayName } from "../src/auth.js";
 import { runExclusive } from "../src/queue.js";
-import { requireLock } from "../src/editLock.js";
+import { requireLock, touchOnStageChange } from "../src/editLock.js";
 import { queueTrackDelete, cancelQueuedDeletion } from "../src/queueActions.js";
 import { processPublish, SubmissionError, MAX_TRACKS, MAX_TRACK_FILE_SIZE_KB } from "../src/publish.js";
 import * as storage from "../src/storage.js";
@@ -37,6 +37,7 @@ export function createTracksRouter(config, lockStore) {
 
   router.get("/", requireAuth, async (req, res) => {
     const isAdmin = req.session.isAdmin === true;
+    const isDemo = req.session.isDemo === true;
     const progressSegments = { real: segmentsFor("publish"), dryRun: segmentsFor("publish", { dryRun: true }) };
     const lockState = lockStore.getLockState(req.session.sessionId);
 
@@ -44,6 +45,7 @@ export function createTracksRouter(config, lockStore) {
       res.status(status).render("tracks", {
         displayName: req.session.displayName,
         isAdmin,
+        isDemo,
         progressSegments,
         lockState,
         maxTracks: MAX_TRACKS,
@@ -167,17 +169,25 @@ export function createTracksRouter(config, lockStore) {
   router.post("/tracks/publish", requireAuth, requireLock(lockStore), async (req, res) => {
     const displayName = req.session.displayName;
     const isAdmin = req.session.isAdmin === true;
+    const isDemo = req.session.isDemo === true;
     // Dry Run is only ever offered in the UI to admin sessions — enforce
     // that server-side too, not just by hiding the checkbox, so a
-    // hand-crafted request can't request a dry run either.
-    const dryRun = isAdmin && req.body?.dryRun === "on";
+    // hand-crafted request can't request a dry run either. Demo sessions
+    // are a separate, stronger rule: ALWAYS forced into dry-run, regardless
+    // of the admin-only checkbox or admin status — a demo login can walk
+    // through the full real workflow end-to-end but must never actually
+    // publish for real.
+    const dryRun = isDemo || (isAdmin && req.body?.dryRun === "on");
 
     log(`Publish request received from ${displayName}${dryRun ? " [DRY RUN]" : ""}`);
     const jobId = jobs.createJob("publish", { dryRun });
 
     runExclusive(() =>
       processPublish({ displayName: sanitizeDisplayName(displayName), dryRun }, config, {
-        onStageChange: (stage) => jobs.recordStage(jobId, stage),
+        // Keeps the edit lock alive for the job's real duration (1-2
+        // minutes), not just the moment this request was received — see
+        // touchOnStageChange's own doc comment for why.
+        onStageChange: touchOnStageChange(lockStore, req.session.sessionId, (stage) => jobs.recordStage(jobId, stage)),
         checkCancelled: () => jobs.isCancelRequested(jobId),
       })
     )

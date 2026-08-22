@@ -5,6 +5,10 @@
   const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
   const WARNING_BEFORE_MS = 30 * 1000;
   const POLL_MS = 4000;
+  // How long with no page interaction before we stop polling the server at
+  // all — distinct from IDLE_TIMEOUT_MS above, which is the server-side
+  // lock's own idle timeout for someone actively recording.
+  const POLL_IDLE_AFTER_MS = 30 * 1000;
 
   const deckBar = document.getElementById("deck-bar");
   if (!deckBar) return;
@@ -43,7 +47,7 @@
       stopButton.hidden = true;
     } else if (currentState.state === "you") {
       recDot.className = "rec-dot filled pulsing";
-      deckText.textContent = "You're recording";
+      deckText.textContent = currentState.isDemo ? "You're recording (demo)" : "You're recording";
       deckSub.textContent = "Editing is unlocked for you. Ends automatically after 5 minutes idle.";
       deckTimer.textContent = formatElapsed(now - currentState.acquiredAt);
       const remaining = IDLE_TIMEOUT_MS - (now - currentState.lastActivityAt);
@@ -52,7 +56,9 @@
       stopButton.hidden = false;
     } else if (currentState.state === "other") {
       recDot.className = "rec-dot filled";
-      deckText.textContent = `${currentState.displayName} is recording`;
+      deckText.textContent = currentState.isDemo
+        ? `${currentState.displayName} is recording (demo)`
+        : `${currentState.displayName} is recording`;
       deckSub.textContent = `Browsing is fine, but editing is locked until ${currentState.displayName} finishes or goes idle.`;
       // Elapsed time only, deliberately not an estimate of remaining safe
       // wait time — decided against showing a prediction we can't actually
@@ -72,6 +78,35 @@
     } catch (err) {
       // Transient network hiccup — leave the UI as-is, try again next poll.
     }
+  }
+
+  // Skip /lock/status polling while nobody's touching the page (e.g. a tab
+  // left open in the background) — cheap to detect, and it's the bulk of
+  // the endpoint's traffic. lastInteractionAt starts "now" so a freshly
+  // loaded page isn't immediately treated as idle.
+  let lastInteractionAt = Date.now();
+  let pausedForIdle = false;
+
+  function onUserActivity() {
+    lastInteractionAt = Date.now();
+    if (pausedForIdle) {
+      // Coming back from idle: poll right away instead of waiting for the
+      // next scheduled tick, so the UI catches up without a visible lag.
+      pausedForIdle = false;
+      poll();
+    }
+  }
+
+  ["mousemove", "mousedown", "touchstart", "keydown", "scroll", "click"].forEach((type) => {
+    window.addEventListener(type, onUserActivity, { passive: true });
+  });
+
+  function scheduledPoll() {
+    if (Date.now() - lastInteractionAt >= POLL_IDLE_AFTER_MS) {
+      pausedForIdle = true;
+      return;
+    }
+    poll();
   }
 
   startButton.addEventListener("click", async () => {
@@ -105,6 +140,6 @@
 
   render();
   poll();
-  setInterval(poll, POLL_MS);
+  setInterval(scheduledPoll, POLL_MS);
   setInterval(render, 1000);
 })();

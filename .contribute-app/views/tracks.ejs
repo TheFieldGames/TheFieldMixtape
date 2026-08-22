@@ -3,7 +3,7 @@
     <p class="error top-bar"><%= error %></p>
   <% } else { %>
     <div class="account-bar">
-      <span>Logged in as <strong><%= displayName %></strong></span>
+      <span>Logged in as <strong><%= displayName %></strong><% if (isDemo) { %> <span class="tag tag-pending" title="Demo sessions can edit and queue changes, but Publish always runs as a dry run.">demo</span><% } %></span>
       <form method="POST" action="/logout" class="inline-form">
         <button type="submit" class="btn-secondary">log out</button>
       </form>
@@ -376,6 +376,24 @@
             publishButton.disabled = false;
           }
         });
+      }
+
+      // ---------- Batch bar: keep .batch-layout's bottom padding in sync
+      // with the fixed bar's actual rendered height. It wraps onto extra
+      // rows (up to two full-width .lock-hint lines, the admin dry-run
+      // checkbox) depending on viewport width and lock state, so a fixed
+      // padding guess can't track it reliably — a ResizeObserver catches
+      // width-driven wraps and content changes alike. ----------
+      const batchBar = document.querySelector('.batch-bar');
+      if (batchBar && window.ResizeObserver) {
+        const batchBarObserver = new ResizeObserver(() => {
+          // getBoundingClientRect (not entry.contentRect, which excludes
+          // padding/border) gives the bar's true outer height — exactly
+          // what .batch-layout needs to clear.
+          const height = batchBar.getBoundingClientRect().height;
+          document.documentElement.style.setProperty('--batch-bar-height', `${height}px`);
+        });
+        batchBarObserver.observe(batchBar);
       }
     </script>
   <% } %>

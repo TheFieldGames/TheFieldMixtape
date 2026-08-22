@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createLockStore, requireLock, IDLE_TIMEOUT_MS } from "../src/editLock.js";
+import { createLockStore, requireLock, touchOnStageChange, IDLE_TIMEOUT_MS } from "../src/editLock.js";
 
 test("a fresh lock store starts idle for anyone", () => {
   const store = createLockStore();
@@ -197,10 +197,108 @@ test("requireLock responds 423 when nobody holds the lock at all", () => {
   assert.equal(getStatus(), 423);
 });
 
+// --- Demo session flag ---
+
+test("acquireLock's isDemo flag is omitted from getLockState('you') when false (default), matching the pre-demo shape exactly", () => {
+  const store = createLockStore();
+  store.acquireLock("session-a", "Alex", 1000);
+  assert.deepEqual(store.getLockState("session-a", 1000), { state: "you", acquiredAt: 1000, lastActivityAt: 1000 });
+});
+
+test("acquireLock's isDemo flag surfaces in getLockState for both the holder ('you') and everyone else ('other')", () => {
+  const store = createLockStore();
+  store.acquireLock("session-a", "Alex", 1000, true);
+  assert.deepEqual(store.getLockState("session-a", 1000), { state: "you", acquiredAt: 1000, lastActivityAt: 1000, isDemo: true });
+  assert.deepEqual(store.getLockState("session-b", 1500), { state: "other", displayName: "Alex", acquiredAt: 1000, isDemo: true });
+});
+
+test("a non-demo acquire never reports isDemo, even to other viewers", () => {
+  const store = createLockStore();
+  store.acquireLock("session-a", "Alex", 1000, false);
+  assert.deepEqual(store.getLockState("session-b", 1500), { state: "other", displayName: "Alex", acquiredAt: 1000 });
+});
+
 test("two independently-created lock stores never share state", () => {
   const storeA = createLockStore();
   const storeB = createLockStore();
   storeA.acquireLock("session-a", "Alex", 1000);
   assert.equal(storeA.getLockState("session-a", 1000).state, "you");
   assert.equal(storeB.getLockState("session-a", 1000).state, "idle");
+});
+
+// --- touchOnStageChange (keeps a long-running publish job's lock warm) ---
+
+test("touchOnStageChange still calls the wrapped onStageChange with the stage name", () => {
+  const store = createLockStore();
+  store.acquireLock("session-a", "Alex");
+  const seenStages = [];
+  const wrapped = touchOnStageChange(store, "session-a", (stage) => seenStages.push(stage));
+
+  wrapped("clone");
+  wrapped("commit");
+
+  assert.deepEqual(seenStages, ["clone", "commit"]);
+});
+
+test("touchOnStageChange refreshes the given session's idle timer on every call", () => {
+  // No explicit `now` here, same as the existing requireLock test above —
+  // touchActivity (and therefore touchOnStageChange, which just calls it)
+  // always uses real Date.now() internally, so acquiring with a real
+  // timestamp keeps this test consistent with what's actually checked.
+  const store = createLockStore();
+  const acquiredAt = Date.now();
+  store.acquireLock("session-a", "Alex");
+  const wrapped = touchOnStageChange(store, "session-a", () => {});
+
+  wrapped("clone");
+
+  assert.ok(store.getLockState("session-a").lastActivityAt >= acquiredAt);
+});
+
+test("touchOnStageChange keeps a lock alive across a simulated long-running publish spanning more than one idle window", (t) => {
+  // Mocked Date so touchOnStageChange's internal Date.now()-based
+  // touchActivity() calls are driven deterministically instead of racing
+  // real wall-clock time.
+  t.mock.timers.enable({ apis: ["Date"] });
+  const idleTimeoutMs = 1000;
+  const store = createLockStore({ idleTimeoutMs });
+  store.acquireLock("session-a", "Alex"); // acquired at mocked t=0
+  const wrapped = touchOnStageChange(store, "session-a", () => {});
+
+  // Simulate stage transitions arriving every 400ms — each individually
+  // well within the 1000ms idle window, but the job as a whole runs 1600ms
+  // total, longer than a single idle window. Without per-stage refreshing,
+  // this lock would have expired around t=1000.
+  for (let i = 0; i < 4; i++) {
+    t.mock.timers.tick(400);
+    wrapped("some-stage");
+  }
+
+  assert.equal(store.getLockState("session-a").state, "you", "still held after 1600ms total thanks to per-stage refreshes, despite exceeding one idle window");
+});
+
+test("a lock with no further stage transitions still expires after a genuinely stuck/hung job", (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const idleTimeoutMs = 1000;
+  const store = createLockStore({ idleTimeoutMs });
+  store.acquireLock("session-a", "Alex");
+  // Wired up, same as a real publish job, but never invoked again past the
+  // initial acquire — simulating a hung job with no further stage progress.
+  touchOnStageChange(store, "session-a", () => {});
+
+  t.mock.timers.tick(idleTimeoutMs + 1);
+
+  assert.equal(store.getLockState("session-a").state, "idle", "a hung job with no stage progress must not hold the lock forever");
+});
+
+test("touchOnStageChange does nothing to the lock when the given session doesn't actually hold it", (t) => {
+  t.mock.timers.enable({ apis: ["Date"] });
+  const store = createLockStore();
+  store.acquireLock("session-a", "Alex"); // acquired at mocked t=0
+  const wrapped = touchOnStageChange(store, "session-b", () => {});
+
+  t.mock.timers.tick(1000);
+  wrapped("clone");
+
+  assert.equal(store.getLockState("session-a").lastActivityAt, 0, "the real holder's activity is unaffected by a non-holder's stage transitions");
 });

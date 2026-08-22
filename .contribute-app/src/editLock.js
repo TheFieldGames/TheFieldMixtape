@@ -37,27 +37,46 @@ export function createLockStore({ idleTimeoutMs = IDLE_TIMEOUT_MS, onExpire = ()
 
   /** Scoped to the requesting session — "you" vs "other" is computed here,
    * not left for the caller to figure out, so there's exactly one place
-   * that knows what "holding the lock" means. */
+   * that knows what "holding the lock" means. `isDemo` is only included in
+   * the returned state when true, so callers/tests that never deal with
+   * demo sessions see the exact same shape as before. */
   function getLockState(sessionId, now = Date.now()) {
     expireIfNeeded(now);
     if (!lock) return { state: "idle" };
     if (lock.sessionId === sessionId) {
-      return { state: "you", acquiredAt: lock.acquiredAt, lastActivityAt: lock.lastActivityAt };
+      return {
+        state: "you",
+        acquiredAt: lock.acquiredAt,
+        lastActivityAt: lock.lastActivityAt,
+        ...(lock.isDemo ? { isDemo: true } : {}),
+      };
     }
-    return { state: "other", displayName: lock.displayName, acquiredAt: lock.acquiredAt };
+    return {
+      state: "other",
+      displayName: lock.displayName,
+      acquiredAt: lock.acquiredAt,
+      ...(lock.isDemo ? { isDemo: true } : {}),
+    };
   }
 
   /** Explicit acquire ("Start editing") — refuses if someone else holds
    * it. Re-acquiring while already holding it is a harmless no-op that
    * preserves the original acquiredAt (doesn't reset your own elapsed
-   * timer just because you clicked twice). */
-  function acquireLock(sessionId, displayName, now = Date.now()) {
+   * timer just because you clicked twice). `isDemo` records whether a demo
+   * session is the one holding the lock, so other viewers' "X is
+   * recording" text can say so too — see routes/lock.js. Kept as a 4th,
+   * defaulted param (after `now`, not before) so every existing 2/3-arg
+   * call site keeps working unchanged. */
+  function acquireLock(sessionId, displayName, now = Date.now(), isDemo = false) {
     expireIfNeeded(now);
     if (lock && lock.sessionId !== sessionId) {
       return { ok: false, heldBy: lock.displayName };
     }
     const acquiredAt = lock && lock.sessionId === sessionId ? lock.acquiredAt : now;
-    lock = { sessionId, displayName, acquiredAt, lastActivityAt: now };
+    // isDemo is only stored on the internal lock object when true, so the
+    // raw shape (e.g. as seen by onExpire below) is byte-for-byte identical
+    // to before this flag existed for every non-demo acquire.
+    lock = { sessionId, displayName, acquiredAt, lastActivityAt: now, ...(isDemo ? { isDemo: true } : {}) };
     return { ok: true };
   }
 
@@ -106,5 +125,29 @@ export function requireLock(lockStore) {
     }
     lockStore.touchActivity(req.session.sessionId);
     next();
+  };
+}
+
+/**
+ * Wraps a processPublish `onStageChange` callback (see src/publish.js) so
+ * every real stage transition also refreshes the given session's idle
+ * timer, not just requireLock's single touch at request-entry above. A
+ * real publish is kicked off as a background job (routes/tracks.js's POST
+ * /tracks/publish) and takes 1-2 minutes, dominated by `tcli publish` —
+ * well past that one initial touch. Without this, an editor who walks away
+ * right after clicking Publish has no guarantee the lock survives
+ * idle-expiry until the job actually finishes; it would just happen to
+ * usually fit inside the idle window.
+ *
+ * Refreshing on every stage transition (rather than, say, a timer) means
+ * the lock only actually expires mid-publish if the job is truly
+ * stuck/hung for a full idle timeout with no stage progressing at all —
+ * which is correct, desired behavior: a genuinely hung job shouldn't hold
+ * the lock forever either.
+ */
+export function touchOnStageChange(lockStore, sessionId, onStageChange) {
+  return (stage) => {
+    onStageChange(stage);
+    lockStore.touchActivity(sessionId);
   };
 }
