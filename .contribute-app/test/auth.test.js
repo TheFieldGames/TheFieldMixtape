@@ -6,6 +6,7 @@ import {
   verifyPassword,
   sanitizeDisplayName,
   handleLogin,
+  handleDemoLogin,
   handleLogout,
 } from "../src/auth.js";
 import { createLockStore } from "../src/editLock.js";
@@ -169,6 +170,45 @@ test("handleLogin: admin password is rejected when ADMIN_PASSWORD_HASH isn't con
     process.env.APP_PASSWORD_HASH = prevApp;
     process.env.ADMIN_PASSWORD_HASH = prevAdmin;
   }
+});
+
+test("handleLogin: the regular shared password logs in with isDemo explicitly false", async () => {
+  const appHash = await bcrypt.hash("shared-secret", 10);
+  const prevApp = process.env.APP_PASSWORD_HASH;
+  process.env.APP_PASSWORD_HASH = appHash;
+  try {
+    const req = { body: { password: "shared-secret", name: "Alex" }, session: {} };
+    await handleLogin(req, fakeRes(), { log: () => {} });
+    assert.equal(req.session.authenticated, true);
+    assert.equal(req.session.isDemo, false);
+  } finally {
+    process.env.APP_PASSWORD_HASH = prevApp;
+  }
+});
+
+test("handleDemoLogin: no password needed — logs straight in as a demo session named Demo", () => {
+  const req = { session: {} };
+  const res = fakeRes();
+  handleDemoLogin(req, res, { log: () => {} });
+  assert.equal(req.session.authenticated, true);
+  assert.equal(req.session.displayName, "Demo");
+  assert.equal(req.session.isDemo, true);
+  assert.equal(req.session.isAdmin, false);
+  assert.equal(res.redirectedTo, "/");
+});
+
+test("handleDemoLogin: gives each session a distinct sessionId, same as a real login", () => {
+  const reqA = { session: {} };
+  const reqB = { session: {} };
+  handleDemoLogin(reqA, fakeRes(), { log: () => {} });
+  handleDemoLogin(reqB, fakeRes(), { log: () => {} });
+  assert.notEqual(reqA.session.sessionId, reqB.session.sessionId);
+});
+
+test("handleDemoLogin logs a success line noting [demo]", () => {
+  const logLines = [];
+  handleDemoLogin({ session: {} }, fakeRes(), { log: (...args) => logLines.push(args.join(" ")) });
+  assert.ok(logLines.some((l) => l.includes("succeeded") && l.includes("Demo") && l.includes("[demo]")));
 });
 
 test("handleLogout clears the session and redirects to /login", () => {

@@ -54,6 +54,7 @@ export async function handleLogin(req, res, { log = logDefault } = {}) {
     req.session.authenticated = true;
     req.session.displayName = displayName;
     req.session.isAdmin = isAdmin;
+    req.session.isDemo = false;
     // A real per-login identity, distinct from displayName (free text,
     // never verified unique) — this is what the edit lock actually checks
     // "do you hold it" against, so two different browser sessions typing
@@ -65,6 +66,23 @@ export async function handleLogin(req, res, { log = logDefault } = {}) {
     log(`Login attempt rejected: ${err.message}`);
     return res.status(400).render("login", { error: err.message });
   }
+}
+
+// No password at all, by design — a one-click "show me the app" path.
+// Skips straight to a session flagged isDemo, which forces every publish
+// from it into dry-run (see routes/tracks.js's POST /tracks/publish) and
+// is visibly marked "demo" in the UI (public/lock-bar.js, views/tracks.ejs)
+// so a real editor can tell a demo session apart from a real one. Display
+// name is always "Demo" — there's nothing to attribute, since it can never
+// actually publish.
+export function handleDemoLogin(req, res, { log = logDefault } = {}) {
+  req.session.authenticated = true;
+  req.session.displayName = "Demo";
+  req.session.isAdmin = false;
+  req.session.isDemo = true;
+  req.session.sessionId = crypto.randomUUID();
+  log(`Login succeeded: "Demo" [demo]`);
+  return res.redirect("/");
 }
 
 export function handleLogout(req, res, { log = logDefault, lockStore } = {}) {

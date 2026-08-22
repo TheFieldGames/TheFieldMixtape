@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { handleLogin, handleLogout } from "../src/auth.js";
+import { handleLogin, handleDemoLogin, handleLogout } from "../src/auth.js";
 
 export function createAuthRouter(lockStore) {
   const router = Router();
@@ -9,6 +9,7 @@ export function createAuthRouter(lockStore) {
   });
 
   router.post("/login", handleLogin);
+  router.post("/login/demo", handleDemoLogin);
   router.post("/logout", (req, res) => handleLogout(req, res, { lockStore }));
 
   return router;
