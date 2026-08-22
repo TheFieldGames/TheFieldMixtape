@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { log as logDefault } from "./logger.js";
+import { notifyLogin as notifyLoginDefault } from "./discord.js";
 
 /** Express middleware: gates every route except /login behind the session flag set at login. */
 export function requireAuth(req, res, next) {
@@ -40,7 +41,7 @@ async function verifyAdminPassword(password) {
 // Never logs the submitted password itself, only that an attempt happened
 // and whether it succeeded — this is a shared password, so a failed
 // attempt is worth seeing in the terminal, but the value never should be.
-export async function handleLogin(req, res, { log = logDefault } = {}) {
+export async function handleLogin(req, res, { log = logDefault, notifyLogin = notifyLoginDefault } = {}) {
   const { password, name } = req.body ?? {};
   try {
     const displayName = sanitizeDisplayName(name);
@@ -61,6 +62,10 @@ export async function handleLogin(req, res, { log = logDefault } = {}) {
     // the same display name can never be confused for one another.
     req.session.sessionId = crypto.randomUUID();
     log(`Login succeeded: "${displayName}"${isAdmin ? " [admin]" : ""}`);
+    // Deliberately not awaited — notifyLogin already catches and logs its
+    // own errors, so a slow/unreachable Discord webhook can never delay or
+    // fail a real login.
+    notifyLogin({ displayName, isAdmin });
     return res.redirect("/");
   } catch (err) {
     log(`Login attempt rejected: ${err.message}`);
@@ -75,13 +80,14 @@ export async function handleLogin(req, res, { log = logDefault } = {}) {
 // so a real editor can tell a demo session apart from a real one. Display
 // name is always "Demo" — there's nothing to attribute, since it can never
 // actually publish.
-export function handleDemoLogin(req, res, { log = logDefault } = {}) {
+export function handleDemoLogin(req, res, { log = logDefault, notifyLogin = notifyLoginDefault } = {}) {
   req.session.authenticated = true;
   req.session.displayName = "Demo";
   req.session.isAdmin = false;
   req.session.isDemo = true;
   req.session.sessionId = crypto.randomUUID();
   log(`Login succeeded: "Demo" [demo]`);
+  notifyLogin({ displayName: "Demo", isDemo: true });
   return res.redirect("/");
 }
 

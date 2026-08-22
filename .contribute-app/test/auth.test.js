@@ -90,6 +90,32 @@ test("handleLogin: correct password + name sets session and redirects to /", asy
   }
 });
 
+test("handleLogin calls notifyLogin with the display name and admin status on success, and never on failure", async () => {
+  const hash = await bcrypt.hash("shared-secret", 10);
+  const prev = process.env.APP_PASSWORD_HASH;
+  process.env.APP_PASSWORD_HASH = hash;
+  try {
+    const calls = [];
+    const notifyLogin = (args) => calls.push(args);
+
+    await handleLogin(
+      { body: { password: "shared-secret", name: "Alex" }, session: {} },
+      fakeRes(),
+      { log: () => {}, notifyLogin }
+    );
+    assert.deepEqual(calls, [{ displayName: "Alex", isAdmin: false }]);
+
+    await handleLogin(
+      { body: { password: "wrong", name: "Alex" }, session: {} },
+      fakeRes(),
+      { log: () => {}, notifyLogin }
+    );
+    assert.equal(calls.length, 1, "a failed login must never trigger a notification");
+  } finally {
+    process.env.APP_PASSWORD_HASH = prev;
+  }
+});
+
 test("handleLogin: wrong password renders 401 with an error, does not set session", async () => {
   const hash = await bcrypt.hash("shared-secret", 10);
   const prev = process.env.APP_PASSWORD_HASH;
@@ -209,6 +235,12 @@ test("handleDemoLogin logs a success line noting [demo]", () => {
   const logLines = [];
   handleDemoLogin({ session: {} }, fakeRes(), { log: (...args) => logLines.push(args.join(" ")) });
   assert.ok(logLines.some((l) => l.includes("succeeded") && l.includes("Demo") && l.includes("[demo]")));
+});
+
+test("handleDemoLogin calls notifyLogin with displayName Demo and isDemo true", () => {
+  const calls = [];
+  handleDemoLogin({ session: {} }, fakeRes(), { log: () => {}, notifyLogin: (args) => calls.push(args) });
+  assert.deepEqual(calls, [{ displayName: "Demo", isDemo: true }]);
 });
 
 test("handleLogout clears the session and redirects to /login", () => {
