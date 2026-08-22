@@ -17,4 +17,18 @@
   <form method="POST" action="/login/demo">
     <button type="submit" class="btn-secondary">Demo</button>
   </form>
+  <script>
+    // Render's free tier can take up to ~60s to wake from sleep — an
+    // impatient re-click during that wait fires a second full login
+    // request. Disabling on submit (not re-enabled — a fresh page load,
+    // success or failure, handles that on its own) matches the same
+    // double-submit guard every other form in the app already has.
+    document.querySelectorAll('form').forEach((form) => {
+      form.addEventListener('submit', () => {
+        const button = form.querySelector('button[type="submit"]');
+        button.disabled = true;
+        button.textContent = 'One moment…';
+      });
+    });
+  </script>
 <%- include('partials/footer') %>
