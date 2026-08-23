@@ -33,12 +33,19 @@
       // means every handler here keeps working across any number of polls
       // without needing to be re-wired.
 
+      // Counts requests still in flight from rapid-fire ×/undo clicks (each
+      // one its own independent submit). Refreshing only runs once this
+      // hits 0 — see refreshQueueBody's own comment below for why a
+      // per-click refresh/reload was racy.
+      let inFlightActions = 0;
+
       queueBody.addEventListener('submit', async (e) => {
         const form = e.target.closest('.pending-action-form');
         if (!form) return;
         e.preventDefault();
         const button = form.querySelector('button');
         button.disabled = true;
+        inFlightActions++;
         try {
           const response = await fetch(form.action, {
             method: 'POST',
@@ -47,10 +54,12 @@
           });
           const data = await response.json();
           if (!response.ok) throw new Error(data.error || 'Something went wrong.');
-          window.location.reload();
         } catch (err) {
           alert(err.message);
           button.disabled = false;
+        } finally {
+          inFlightActions--;
+          if (inFlightActions === 0) refreshQueueBody();
         }
       });
 
@@ -290,20 +299,21 @@
       }
       wireQueueBody();
 
-      // ---------- Live queue polling ----------
-      // Every 10s, but only for a session that ISN'T the current editor —
-      // the actual editor's own actions already reload the page on
-      // success, and polling out from under someone actively filling in
-      // the staged-file mini-form would wipe out unsaved input. This is
-      // exactly what let a real change go unnoticed once already: one
-      // person queued removals, released the lock, and the next editor's
-      // already-open tab never refreshed to show them before publishing
-      // (the publish itself was correct either way — processPublish always
-      // re-reads the manifest fresh — but not being able to *see* the true
-      // state before publishing is the real problem this fixes).
-      const QUEUE_POLL_MS = 10000;
-      setInterval(async () => {
-        if (document.body.dataset.lockState === 'you') return;
+      // ---------- Refreshing #queue-body in place from the true server
+      // state — shared by the poll below and by every pending-action-form
+      // submit (see that handler, wired earlier), instead of each doing
+      // its own window.location.reload(). A plain per-form reload had a
+      // real race: clicking × on two different rows in quick succession
+      // fires two independent requests, and whichever one's response
+      // lands first triggers an immediate reload — which can happen
+      // *before* the second request has actually finished writing to R2,
+      // showing a stale/undercounted queue until the next action catches
+      // it up. Fetching this same fragment is always a fresh read, so as
+      // long as it only runs once every currently in-flight action has
+      // actually settled (see inFlightActions below), it can't observe a
+      // partial/mid-write state the way a reload racing an in-flight
+      // request could. ----------
+      async function refreshQueueBody() {
         try {
           const response = await fetch('/tracks/queue-fragment');
           if (!response.ok) return;
@@ -317,9 +327,27 @@
             newFilterInput.dispatchEvent(new Event('input'));
           }
         } catch (err) {
-          // Transient network hiccup — leave the current view as-is, try
-          // again next tick.
+          // Transient network hiccup — leave the current view as-is; the
+          // next poll tick or action will pick it back up.
         }
+      }
+
+      // ---------- Live queue polling ----------
+      // Every 10s, but only for a session that ISN'T the current editor —
+      // the actual editor's own actions already refresh #queue-body on
+      // success (see refreshQueueBody/inFlightActions), and polling out
+      // from under someone actively filling in the staged-file mini-form
+      // would wipe out unsaved input. This is exactly what let a real
+      // change go unnoticed once already: one person queued removals,
+      // released the lock, and the next editor's already-open tab never
+      // refreshed to show them before publishing (the publish itself was
+      // correct either way — processPublish always re-reads the manifest
+      // fresh — but not being able to *see* the true state before
+      // publishing is the real problem this fixes).
+      const QUEUE_POLL_MS = 10000;
+      setInterval(() => {
+        if (document.body.dataset.lockState === 'you') return;
+        refreshQueueBody();
       }, QUEUE_POLL_MS);
     </script>
   <% } %>
