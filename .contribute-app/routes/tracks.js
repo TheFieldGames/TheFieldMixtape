@@ -33,6 +33,64 @@ function toRow(filename, entry) {
   };
 }
 
+/** Everything the queue-body partial needs, freshly read from R2/the
+ * manifest — shared by the full page (GET /) and the polled fragment
+ * (GET /tracks/queue-fragment), so the two can never drift out of sync
+ * with each other about what's actually pending. */
+async function loadQueueState(config) {
+  const trackNames = await storage.listTracks(config.r2Client, config.r2Bucket);
+
+  let manifestData = await manifest.getManifest(config.r2Client, config.r2Bucket);
+  const missing = trackNames.some((name) => !(`${name}.ogg` in manifestData.tracks));
+  if (missing) {
+    manifestData = await manifest.backfillLegacyTracks(config.r2Client, config.r2Bucket, trackNames);
+  }
+
+  const pendingDeleteSet = new Set(manifestData.pendingDeletes);
+
+  // Every currently-live track, including ones marked for removal — those
+  // stay visible with a `pendingDelete` flag rather than disappearing, so
+  // Side A can render them as dashed/struck rows with an undo action
+  // instead of hiding them in a separate list.
+  const rows = sortTracks(
+    trackNames.map((trackName) => ({
+      ...toRow(`${trackName}.ogg`, manifestData.tracks[`${trackName}.ogg`]),
+      pendingDelete: pendingDeleteSet.has(`${trackName}.ogg`),
+    }))
+  );
+
+  const pendingAddRows = sortTracks(
+    Object.entries(manifestData.tracks)
+      .filter(([, entry]) => entry.status === "pending")
+      .map(([filename, entry]) => toRow(filename, entry))
+  );
+
+  // Derived from `rows` (not re-read from the manifest separately) so Side
+  // B's "Removing" list can never disagree with Side A's dashed rows about
+  // which tracks are marked.
+  const pendingDeleteRows = rows.filter((row) => row.pendingDelete);
+
+  // Best-effort: a transient R2 read hiccup here shouldn't block the whole
+  // page/poll from loading — degrade to "usage info unavailable" rather
+  // than a 500. The server-side lock in processPublish is the real
+  // enforcement either way; this is just the UI indicator.
+  let usageInfo = null;
+  try {
+    const usage = await bandwidth.getUsage(config.r2Client, config.r2Bucket);
+    const totalTrackBytes = await storage.getTotalTrackBytes(config.r2Client, config.r2Bucket);
+    usageInfo = {
+      locked: bandwidth.isLocked(usage),
+      usageGB: (usage.bytesUsed / 1e9).toFixed(2),
+      capGB: (bandwidth.LOCK_THRESHOLD_BYTES / 1e9).toFixed(1),
+      publishesRemaining: bandwidth.estimatePublishesRemaining(usage, totalTrackBytes),
+    };
+  } catch (err) {
+    logError("Failed to load bandwidth usage for the indicator (non-fatal):", err.message);
+  }
+
+  return { rows, pendingAddRows, pendingDeleteRows, usageInfo };
+}
+
 export function createTracksRouter(config, lockStore) {
   const router = Router();
 
@@ -60,57 +118,7 @@ export function createTracksRouter(config, lockStore) {
       });
 
     try {
-      const trackNames = await storage.listTracks(config.r2Client, config.r2Bucket);
-
-      let manifestData = await manifest.getManifest(config.r2Client, config.r2Bucket);
-      const missing = trackNames.some((name) => !(`${name}.ogg` in manifestData.tracks));
-      if (missing) {
-        manifestData = await manifest.backfillLegacyTracks(config.r2Client, config.r2Bucket, trackNames);
-      }
-
-      const pendingDeleteSet = new Set(manifestData.pendingDeletes);
-
-      // Every currently-live track, including ones marked for removal —
-      // those stay visible with a `pendingDelete` flag rather than
-      // disappearing, so Side A can render them as dashed/struck rows with
-      // an undo action instead of hiding them in a separate list.
-      const rows = sortTracks(
-        trackNames.map((trackName) => ({
-          ...toRow(`${trackName}.ogg`, manifestData.tracks[`${trackName}.ogg`]),
-          pendingDelete: pendingDeleteSet.has(`${trackName}.ogg`),
-        }))
-      );
-
-      const pendingAddRows = sortTracks(
-        Object.entries(manifestData.tracks)
-          .filter(([, entry]) => entry.status === "pending")
-          .map(([filename, entry]) => toRow(filename, entry))
-      );
-
-      // Derived from `rows` (not re-read from the manifest separately) so
-      // Side B's "Removing" list can never disagree with Side A's dashed
-      // rows about which tracks are marked.
-      const pendingDeleteRows = rows.filter((row) => row.pendingDelete);
-
-      // Best-effort: a transient R2 read hiccup here shouldn't block the
-      // whole page from loading — degrade to "usage info unavailable"
-      // rather than a 500. The server-side lock in processPublish is the
-      // real enforcement either way; this is just the UI indicator.
-      let usageInfo = null;
-      try {
-        const usage = await bandwidth.getUsage(config.r2Client, config.r2Bucket);
-        const totalTrackBytes = await storage.getTotalTrackBytes(config.r2Client, config.r2Bucket);
-        usageInfo = {
-          locked: bandwidth.isLocked(usage),
-          usageGB: (usage.bytesUsed / 1e9).toFixed(2),
-          capGB: (bandwidth.LOCK_THRESHOLD_BYTES / 1e9).toFixed(1),
-          publishesRemaining: bandwidth.estimatePublishesRemaining(usage, totalTrackBytes),
-        };
-      } catch (err) {
-        logError("Failed to load bandwidth usage for the indicator (non-fatal):", err.message);
-      }
-
-      renderPage({ rows, pendingAddRows, pendingDeleteRows, usageInfo });
+      renderPage(await loadQueueState(config));
     } catch (err) {
       logError("Failed to load the track list:", err.message);
       renderPage({ error: "Couldn't load the track list right now — try again shortly." }, 500);
@@ -120,6 +128,35 @@ export function createTracksRouter(config, lockStore) {
   // Old bookmarks/links to the previous standalone tracks page land on the
   // merged Side A/B view, now at "/".
   router.get("/tracks", requireAuth, (req, res) => res.redirect("/"));
+
+  // Polled by public/queue-poll.js every 10s, only for sessions that don't
+  // currently hold the edit lock — lets anyone watching the page see the
+  // queue update live as the actual editor works, without the jarring
+  // full-page reload a naive implementation would need. Renders the exact
+  // same partial (and therefore the exact same markup) the full page uses,
+  // so there's a single source of truth for what "the queue" looks like —
+  // no separate client-side rendering logic to keep in sync with the
+  // server's. Read-only, so allowed regardless of lock state, same as
+  // browsing/filtering the live tracklist.
+  router.get("/tracks/queue-fragment", requireAuth, async (req, res) => {
+    const isAdmin = req.session.isAdmin === true;
+    try {
+      const state = await loadQueueState(config);
+      const pendingCount = state.pendingAddRows.length + state.pendingDeleteRows.length;
+      const netAfterPublish = state.rows.length - state.pendingDeleteRows.length + state.pendingAddRows.length;
+      res.render("partials/queue-body", {
+        ...state,
+        isAdmin,
+        maxTracks: MAX_TRACKS,
+        maxTrackFileSizeKb: MAX_TRACK_FILE_SIZE_KB,
+        pendingCount,
+        netAfterPublish,
+      });
+    } catch (err) {
+      logError("Failed to load the queue fragment:", err.message);
+      res.status(500).send("");
+    }
+  });
 
   // Queueing a deletion (or cancelling a still-pending add) is fast — no
   // git/tcli involved — so this responds synchronously, same as POST

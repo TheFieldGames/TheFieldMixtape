@@ -13,199 +13,62 @@
     <% const pendingCount = pendingAddRows.length + pendingDeleteRows.length; %>
     <% const netAfterPublish = rows.length - pendingDeleteRows.length + pendingAddRows.length; %>
 
-    <div class="layout">
-      <!-- Side A: the live tracklist, with inline removal marks -->
-      <div class="container side-a">
-        <div class="hubs"><div class="hub"></div><div class="hub"></div></div>
-        <%- include('partials/label-strip', {
-          title: 'Tracks',
-          subtitle: `${rows.length} live · ${pendingDeleteRows.length} marked for removal`,
-          sideLetter: 'A',
-        }) %>
-        <p class="lock-hint">Press &ldquo;Start editing&rdquo; above to mark tracks for removal.</p>
-        <% if (rows.length === 0) { %>
-          <p class="hint">No tracks yet &mdash; queue one on Side B.</p>
-        <% } else { %>
-          <div class="table-toolbar">
-            <span>Click <span style="color: var(--text-cream)">&times;</span> to mark a track for removal</span>
-            <input type="text" id="track-filter" class="search" placeholder="Filter tracks&hellip;">
-          </div>
-          <div class="t-head"><span></span><span>Track</span><span>By</span><span>Added</span><span></span></div>
-          <div class="scroll-wrap" data-scroll-fade>
-            <div class="scroll-fade top"></div>
-            <div class="no-scrollbar track-table-scroll" data-scroll-fade-body data-scroll-a>
-              <% rows.forEach((row, i) => { %>
-                <div class="t-row<%= row.pendingDelete ? ' removing' : '' %>" data-track-name="<%= row.trackName.toLowerCase() %>">
-                  <span class="t-num"><%= String(i + 1).padStart(2, '0') %></span>
-                  <span class="t-title"><%= row.trackName %></span>
-                  <span class="t-by<%= row.addedAt ? '' : ' legacy' %>"><%= row.addedBy %></span>
-                  <span class="t-date<%= row.addedAt ? '' : ' legacy' %>"><%= row.addedAt ? new Date(row.addedAt).toLocaleDateString() : 'legacy' %></span>
-                  <% if (row.pendingDelete) { %>
-                    <form method="POST" action="/tracks/undo-delete" class="inline-form pending-action-form lock-gated">
-                      <input type="hidden" name="filename" value="<%= row.filename %>">
-                      <button type="submit" class="t-action undo" title="Undo removal">&#8634;</button>
-                    </form>
-                  <% } else { %>
-                    <form method="POST" action="/tracks/delete" class="inline-form pending-action-form lock-gated">
-                      <input type="hidden" name="filename" value="<%= row.filename %>">
-                      <button type="submit" class="t-action" title="Mark for removal">&times;</button>
-                    </form>
-                  <% } %>
-                </div>
-              <% }) %>
-            </div>
-            <div class="scroll-fade bottom"></div>
-          </div>
-          <p class="table-footer"><%= rows.length %> track<%= rows.length === 1 ? '' : 's' %> on tape</p>
-        <% } %>
-      </div>
-
-      <!-- Side B: everything pending this batch, both directions -->
-      <div class="container side-b">
-        <div class="hubs"><div class="hub"></div><div class="hub"></div></div>
-        <%- include('partials/label-strip', {
-          title: 'Queue',
-          subtitle: 'Everything pending this batch',
-          sideLetter: 'B',
-        }) %>
-        <p class="lock-hint">Press &ldquo;Start editing&rdquo; above to add or remove tracks.</p>
-        <div class="field">
-          <div class="file-row lock-gated">
-            <input type="file" id="file-picker" accept="audio/mpeg,.mp3" multiple>
-          </div>
-          <p class="hint" id="file-count">No files selected</p>
-          <p class="file-helper">.mp3 only. Each file must convert to under <%= maxTrackFileSizeKb %>KB. Up to <%= maxTracks %> tracks total on the tape.</p>
-        </div>
-        <div class="staged-list" id="staged-list" hidden></div>
-        <p class="error" id="add-queue-error"></p>
-        <button type="button" id="add-to-queue-button" class="btn-secondary lock-gated" disabled>+ Add to queue</button>
-
-        <div class="section-label"><span>Adding</span><span class="tag tag-pending"><%= pendingAddRows.length %></span></div>
-        <% if (pendingAddRows.length === 0) { %>
-          <p class="hint">Nothing queued to add.</p>
-        <% } else { %>
-          <div class="scroll-wrap" data-scroll-fade>
-            <div class="scroll-fade top"></div>
-            <div class="queue-scroll no-scrollbar" data-scroll-fade-body>
-              <% pendingAddRows.forEach((row) => { %>
-                <div class="queue-item" data-pending-add="<%= row.filename %>">
-                  <div class="qi-main">
-                    <div class="qi-title"><%= row.trackName %></div>
-                    <div class="qi-artist">queued by <%= row.addedBy %></div>
-                  </div>
-                  <form method="POST" action="/tracks/delete" class="inline-form pending-action-form lock-gated">
-                    <input type="hidden" name="filename" value="<%= row.filename %>">
-                    <button type="submit" class="qi-remove" title="Cancel this add">&times;</button>
-                  </form>
-                </div>
-              <% }) %>
-            </div>
-            <div class="scroll-fade bottom"></div>
-          </div>
-        <% } %>
-
-        <div class="divider"></div>
-
-        <div class="section-label"><span>Removing</span><span class="tag tag-removing"><%= pendingDeleteRows.length %></span></div>
-        <% if (pendingDeleteRows.length === 0) { %>
-          <p class="hint">Nothing marked for removal.</p>
-        <% } else { %>
-          <div class="scroll-wrap" data-scroll-fade>
-            <div class="scroll-fade top"></div>
-            <div class="queue-scroll no-scrollbar" data-scroll-fade-body>
-              <% pendingDeleteRows.forEach((row) => { %>
-                <div class="queue-item" data-pending-delete="<%= row.filename %>">
-                  <div class="qi-main">
-                    <div class="qi-title strike"><%= row.trackName %></div>
-                    <div class="qi-artist">added by <%= row.addedBy %></div>
-                  </div>
-                  <form method="POST" action="/tracks/undo-delete" class="inline-form pending-action-form lock-gated">
-                    <input type="hidden" name="filename" value="<%= row.filename %>">
-                    <button type="submit" class="qi-undo" title="Undo removal">&#8634;</button>
-                  </form>
-                </div>
-              <% }) %>
-            </div>
-            <div class="scroll-fade bottom"></div>
-          </div>
-        <% } %>
-      </div>
-    </div>
-
-    <div class="batch-bar">
-      <a href="<%= thunderstoreUrl %>" target="_blank" rel="noopener" class="batch-link">TheFieldMixtape &#8599;</a>
-      <% if (usageInfo) { %>
-        <div class="batch-quota">
-          <div class="batch-quota-track"><div class="batch-quota-fill<%= usageInfo.locked ? ' locked' : '' %>" style="width: <%= Math.min(100, (parseFloat(usageInfo.usageGB) / parseFloat(usageInfo.capGB)) * 100).toFixed(1) %>%"></div></div>
-          <span class="batch-quota-text">
-            <b><%= usageInfo.usageGB %></b>/<%= usageInfo.capGB %>GB this month
-            <% if (usageInfo.locked) { %> &middot; locked<% } else if (usageInfo.publishesRemaining !== null) { %> &middot; ~<%= usageInfo.publishesRemaining %> publish<%= usageInfo.publishesRemaining === 1 ? '' : 'es' %> left<% } %>
-          </span>
-        </div>
-      <% } %>
-      <div class="batch-summary">
-        <span class="add">+<%= pendingAddRows.length %> addition<%= pendingAddRows.length === 1 ? '' : 's' %></span>
-        <span class="rem">&minus;<%= pendingDeleteRows.length %> removal<%= pendingDeleteRows.length === 1 ? '' : 's' %></span>
-        <span class="muted">&rarr; <%= netAfterPublish %> track<%= netAfterPublish === 1 ? '' : 's' %> after publish</span>
-      </div>
-      <% if (isAdmin) { %>
-        <label class="checkbox-label">
-          <input type="checkbox" id="publish-dry-run">
-          Dry run
-        </label>
-      <% } %>
-      <button type="button" id="publish-button" class="lock-gated btn-primary" <%= pendingCount === 0 ? 'disabled' : '' %>>Publish <%= pendingCount %> change<%= pendingCount === 1 ? '' : 's' %></button>
-      <button type="button" id="clear-batch-button" class="link-button lock-gated" <%= pendingCount === 0 ? 'disabled' : '' %>>Clear batch</button>
-      <% if (pendingCount === 0) { %><p class="lock-hint" style="display: block;">Nothing queued yet &mdash; add a track or mark one for removal.</p><% } %>
-      <p class="lock-hint">Press &ldquo;Start editing&rdquo; above before publishing.</p>
+    <div id="queue-body">
+      <%- include('partials/queue-body', {
+        rows, pendingAddRows, pendingDeleteRows, usageInfo, isAdmin,
+        maxTracks, maxTrackFileSizeKb, thunderstoreUrl, pendingCount, netAfterPublish,
+      }) %>
     </div>
 
 <%- include('partials/progress-modal') %>
     <script src="/scroll-fade.js"></script>
     <script>
-      document.querySelectorAll('.pending-action-form').forEach((form) => {
-        form.addEventListener('submit', async (e) => {
-          e.preventDefault();
-          const button = form.querySelector('button');
-          button.disabled = true;
-          try {
-            const response = await fetch(form.action, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams(new FormData(form)),
-            });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Something went wrong.');
-            window.location.reload();
-          } catch (err) {
-            alert(err.message);
-            button.disabled = false;
-          }
-        });
+      const queueBody = document.getElementById('queue-body');
+
+      // ---------- Event delegation for everything inside #queue-body ----------
+      // Every 10s poll (below) replaces #queue-body's innerHTML wholesale, so
+      // any listener attached directly to an element inside it would go
+      // stale the moment that element gets swapped out. Delegating to
+      // #queue-body itself — which is never replaced, only its children —
+      // means every handler here keeps working across any number of polls
+      // without needing to be re-wired.
+
+      queueBody.addEventListener('submit', async (e) => {
+        const form = e.target.closest('.pending-action-form');
+        if (!form) return;
+        e.preventDefault();
+        const button = form.querySelector('button');
+        button.disabled = true;
+        try {
+          const response = await fetch(form.action, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams(new FormData(form)),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Something went wrong.');
+          window.location.reload();
+        } catch (err) {
+          alert(err.message);
+          button.disabled = false;
+        }
       });
 
       // ---------- Side A: live filter. No lock-gating — browsing/search
       // always works regardless of who (if anyone) holds the edit lock. ----------
-      const filterInput = document.getElementById('track-filter');
-      const trackScroll = document.querySelector('[data-scroll-a]');
-      if (filterInput) {
-        filterInput.addEventListener('input', () => {
-          const q = filterInput.value.trim().toLowerCase();
-          document.querySelectorAll('.t-row').forEach((row) => {
-            row.hidden = q.length > 0 && !row.dataset.trackName.includes(q);
-          });
-          if (trackScroll) trackScroll.dispatchEvent(new Event('scroll'));
+      queueBody.addEventListener('input', (e) => {
+        if (e.target.id !== 'track-filter') return;
+        const q = e.target.value.trim().toLowerCase();
+        const trackScroll = queueBody.querySelector('[data-scroll-a]');
+        queueBody.querySelectorAll('.t-row').forEach((row) => {
+          row.hidden = q.length > 0 && !row.dataset.trackName.includes(q);
         });
-      }
+        if (trackScroll) trackScroll.dispatchEvent(new Event('scroll'));
+      });
 
       // ---------- Side B: stage multiple files, one title/artist mini-form
       // each (guessed from the filename, editable), before queueing them
       // one at a time against the existing single-file /submit endpoint. ----------
-      const filePicker = document.getElementById('file-picker');
-      const fileCount = document.getElementById('file-count');
-      const stagedList = document.getElementById('staged-list');
-      const addToQueueButton = document.getElementById('add-to-queue-button');
-      const addQueueError = document.getElementById('add-queue-error');
       let staged = [];
       let stagedSeq = 0;
 
@@ -217,6 +80,9 @@
       }
 
       function renderStaged() {
+        const stagedList = document.getElementById('staged-list');
+        const fileCount = document.getElementById('file-count');
+        const addToQueueButton = document.getElementById('add-to-queue-button');
         stagedList.innerHTML = '';
         staged.forEach((item) => {
           const row = document.createElement('div');
@@ -246,13 +112,10 @@
 
           const removeButton = document.createElement('button');
           removeButton.type = 'button';
-          removeButton.className = 'qi-remove';
+          removeButton.className = 'qi-remove staged-remove';
           removeButton.title = 'Remove from selection';
           removeButton.innerHTML = '&times;';
-          removeButton.addEventListener('click', () => {
-            staged = staged.filter((s) => s.id !== item.id);
-            renderStaged();
-          });
+          removeButton.dataset.stagedId = item.id;
 
           row.appendChild(fields);
           row.appendChild(removeButton);
@@ -264,149 +127,200 @@
         addToQueueButton.disabled = staged.length === 0;
       }
 
-      if (filePicker) {
-        filePicker.addEventListener('change', () => {
-          // Immediate client-side feedback only — the server (mp3FileFilter
-          // in routes/index.js) is the real, authoritative check, since this
-          // one is trivially bypassed by anyone not using the browser UI.
-          const rejected = [];
-          Array.from(filePicker.files).forEach((file) => {
-            if (!/\.mp3$/i.test(file.name)) {
-              rejected.push(file.name);
-              return;
-            }
-            staged.push({ file, guess: guessFromFilename(file.name), id: ++stagedSeq });
-          });
-          if (rejected.length > 0) {
-            addQueueError.textContent = `Only .mp3 files are accepted — skipped: ${rejected.join(', ')}`;
-          }
-          filePicker.value = '';
-          renderStaged();
-        });
-      }
-
-      if (addToQueueButton) {
-        addToQueueButton.addEventListener('click', async () => {
-          addQueueError.textContent = '';
-          addToQueueButton.disabled = true;
-          const rows = Array.from(stagedList.children);
-          let stoppedAt = -1;
-
-          for (let i = 0; i < staged.length; i++) {
-            const item = staged[i];
-            const row = rows[i];
-            const title = row.querySelector('.staged-title').value.trim();
-            const artist = row.querySelector('.staged-artist').value.trim();
-            addToQueueButton.textContent = `Queueing ${i + 1} of ${staged.length}…`;
-
-            const formData = new FormData();
-            formData.append('audio', item.file);
-            formData.append('title', title);
-            formData.append('artist', artist);
-
-            try {
-              const response = await fetch('/submit', { method: 'POST', body: formData });
-              const data = await response.json();
-              if (!response.ok) throw new Error(data.error || 'Something went wrong.');
-            } catch (err) {
-              addQueueError.textContent = `"${item.file.name}": ${err.message}`;
-              stoppedAt = i;
-              break;
-            }
-          }
-
-          addToQueueButton.textContent = '+ Add to queue';
-
-          if (stoppedAt === -1) {
-            window.location.reload();
+      queueBody.addEventListener('change', (e) => {
+        if (e.target.id !== 'file-picker') return;
+        const filePicker = e.target;
+        const addQueueError = document.getElementById('add-queue-error');
+        // Immediate client-side feedback only — the server (mp3FileFilter
+        // in routes/index.js) is the real, authoritative check, since this
+        // one is trivially bypassed by anyone not using the browser UI.
+        const rejected = [];
+        Array.from(filePicker.files).forEach((file) => {
+          if (!/\.mp3$/i.test(file.name)) {
+            rejected.push(file.name);
             return;
           }
-
-          // Partial failure: the ones before stoppedAt are safely queued
-          // server-side already, so drop them locally. Keep the failed one
-          // and everything after it staged (with their File objects still
-          // intact) so they can be fixed and retried without re-choosing
-          // files, which a browser can't do programmatically.
-          staged = staged.slice(stoppedAt);
-          renderStaged();
+          staged.push({ file, guess: guessFromFilename(file.name), id: ++stagedSeq });
         });
-      }
+        if (rejected.length > 0) {
+          addQueueError.textContent = `Only .mp3 files are accepted — skipped: ${rejected.join(', ')}`;
+        }
+        filePicker.value = '';
+        renderStaged();
+      });
 
-      // ---------- Batch bar: Clear batch ----------
-      const clearBatchButton = document.getElementById('clear-batch-button');
-      if (clearBatchButton) {
-        clearBatchButton.addEventListener('click', async () => {
-          clearBatchButton.disabled = true;
+      // Delegated separately from the submit/input handlers above since
+      // staged-remove buttons are type="button" (no form to submit) and
+      // are themselves recreated by renderStaged() on every change.
+      queueBody.addEventListener('click', (e) => {
+        const removeButton = e.target.closest('.staged-remove');
+        if (!removeButton) return;
+        const id = Number(removeButton.dataset.stagedId);
+        staged = staged.filter((s) => s.id !== id);
+        renderStaged();
+      });
+
+      queueBody.addEventListener('click', async (e) => {
+        if (e.target.id !== 'add-to-queue-button') return;
+        const addToQueueButton = e.target;
+        const stagedList = document.getElementById('staged-list');
+        const addQueueError = document.getElementById('add-queue-error');
+        addQueueError.textContent = '';
+        addToQueueButton.disabled = true;
+        const rowEls = Array.from(stagedList.children);
+        let stoppedAt = -1;
+
+        for (let i = 0; i < staged.length; i++) {
+          const item = staged[i];
+          const rowEl = rowEls[i];
+          const title = rowEl.querySelector('.staged-title').value.trim();
+          const artist = rowEl.querySelector('.staged-artist').value.trim();
+          addToQueueButton.textContent = `Queueing ${i + 1} of ${staged.length}…`;
+
+          const formData = new FormData();
+          formData.append('audio', item.file);
+          formData.append('title', title);
+          formData.append('artist', artist);
+
           try {
-            const pendingAdds = Array.from(document.querySelectorAll('[data-pending-add]')).map((el) => el.dataset.pendingAdd);
-            const pendingDeletes = Array.from(document.querySelectorAll('[data-pending-delete]')).map((el) => el.dataset.pendingDelete);
-            for (const filename of pendingAdds) {
-              await fetch('/tracks/delete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({ filename }),
-              });
-            }
-            for (const filename of pendingDeletes) {
-              await fetch('/tracks/undo-delete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({ filename }),
-              });
-            }
-            window.location.reload();
-          } catch (err) {
-            alert(err.message);
-            clearBatchButton.disabled = false;
-          }
-        });
-      }
-
-      // ---------- Publish ----------
-      const publishButton = document.getElementById('publish-button');
-      if (publishButton) {
-        publishButton.addEventListener('click', async () => {
-          const dryRunCheckbox = document.getElementById('publish-dry-run');
-          const isDryRun = dryRunCheckbox ? dryRunCheckbox.checked : false;
-          const confirmMessage = isDryRun
-            ? 'Run a dry-run publish? Nothing will actually go live.'
-            : 'Publish all pending changes? This updates the live mixtape.';
-          if (!confirm(confirmMessage)) return;
-
-          publishButton.disabled = true;
-          try {
-            const response = await fetch('/tracks/publish', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams({ dryRun: isDryRun ? 'on' : '' }),
-            });
+            const response = await fetch('/submit', { method: 'POST', body: formData });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Something went wrong.');
-            openProgressModal({ jobId: data.jobId, dryRun: isDryRun });
           } catch (err) {
-            alert(err.message);
-            publishButton.disabled = false;
+            addQueueError.textContent = `"${item.file.name}": ${err.message}`;
+            stoppedAt = i;
+            break;
           }
-        });
-      }
+        }
 
-      // ---------- Batch bar: keep .batch-layout's bottom padding in sync
-      // with the fixed bar's actual rendered height. It wraps onto extra
-      // rows (up to two full-width .lock-hint lines, the admin dry-run
-      // checkbox) depending on viewport width and lock state, so a fixed
-      // padding guess can't track it reliably — a ResizeObserver catches
-      // width-driven wraps and content changes alike. ----------
-      const batchBar = document.querySelector('.batch-bar');
-      if (batchBar && window.ResizeObserver) {
-        const batchBarObserver = new ResizeObserver(() => {
-          // getBoundingClientRect (not entry.contentRect, which excludes
-          // padding/border) gives the bar's true outer height — exactly
-          // what .batch-layout needs to clear.
-          const height = batchBar.getBoundingClientRect().height;
-          document.documentElement.style.setProperty('--batch-bar-height', `${height}px`);
-        });
-        batchBarObserver.observe(batchBar);
+        addToQueueButton.textContent = '+ Add to queue';
+
+        if (stoppedAt === -1) {
+          window.location.reload();
+          return;
+        }
+
+        // Partial failure: the ones before stoppedAt are safely queued
+        // server-side already, so drop them locally. Keep the failed one
+        // and everything after it staged (with their File objects still
+        // intact) so they can be fixed and retried without re-choosing
+        // files, which a browser can't do programmatically.
+        staged = staged.slice(stoppedAt);
+        renderStaged();
+      });
+
+      // ---------- Batch bar: Clear batch ----------
+      queueBody.addEventListener('click', async (e) => {
+        if (e.target.id !== 'clear-batch-button') return;
+        const clearBatchButton = e.target;
+        clearBatchButton.disabled = true;
+        try {
+          const pendingAdds = Array.from(queueBody.querySelectorAll('[data-pending-add]')).map((el) => el.dataset.pendingAdd);
+          const pendingDeletes = Array.from(queueBody.querySelectorAll('[data-pending-delete]')).map((el) => el.dataset.pendingDelete);
+          for (const filename of pendingAdds) {
+            await fetch('/tracks/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ filename }),
+            });
+          }
+          for (const filename of pendingDeletes) {
+            await fetch('/tracks/undo-delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ filename }),
+            });
+          }
+          window.location.reload();
+        } catch (err) {
+          alert(err.message);
+          clearBatchButton.disabled = false;
+        }
+      });
+
+      // ---------- Publish ----------
+      queueBody.addEventListener('click', async (e) => {
+        if (e.target.id !== 'publish-button') return;
+        const publishButton = e.target;
+        const dryRunCheckbox = document.getElementById('publish-dry-run');
+        const isDryRun = dryRunCheckbox ? dryRunCheckbox.checked : false;
+        const confirmMessage = isDryRun
+          ? 'Run a dry-run publish? Nothing will actually go live.'
+          : 'Publish all pending changes? This updates the live mixtape.';
+        if (!confirm(confirmMessage)) return;
+
+        publishButton.disabled = true;
+        try {
+          const response = await fetch('/tracks/publish', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ dryRun: isDryRun ? 'on' : '' }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Something went wrong.');
+          openProgressModal({ jobId: data.jobId, dryRun: isDryRun });
+        } catch (err) {
+          alert(err.message);
+          publishButton.disabled = false;
+        }
+      });
+
+      // ---------- Keep .batch-layout's bottom padding in sync with the
+      // fixed bar's actual rendered height, and re-wire the scroll-fade
+      // gradients — both need to be redone against the new DOM every time
+      // a poll (below) replaces #queue-body's contents, since a
+      // ResizeObserver stops reporting once the element it was observing
+      // is removed, and scroll-fade.js only auto-wires elements present at
+      // the time its script runs. ----------
+      let batchBarObserver = null;
+      function wireQueueBody() {
+        if (batchBarObserver) batchBarObserver.disconnect();
+        const batchBar = queueBody.querySelector('.batch-bar');
+        if (batchBar && window.ResizeObserver) {
+          batchBarObserver = new ResizeObserver(() => {
+            // getBoundingClientRect (not entry.contentRect, which excludes
+            // padding/border) gives the bar's true outer height — exactly
+            // what .batch-layout needs to clear.
+            const height = batchBar.getBoundingClientRect().height;
+            document.documentElement.style.setProperty('--batch-bar-height', `${height}px`);
+          });
+          batchBarObserver.observe(batchBar);
+        }
+        if (window.wireScrollFade) window.wireScrollFade(queueBody);
       }
+      wireQueueBody();
+
+      // ---------- Live queue polling ----------
+      // Every 10s, but only for a session that ISN'T the current editor —
+      // the actual editor's own actions already reload the page on
+      // success, and polling out from under someone actively filling in
+      // the staged-file mini-form would wipe out unsaved input. This is
+      // exactly what let a real change go unnoticed once already: one
+      // person queued removals, released the lock, and the next editor's
+      // already-open tab never refreshed to show them before publishing
+      // (the publish itself was correct either way — processPublish always
+      // re-reads the manifest fresh — but not being able to *see* the true
+      // state before publishing is the real problem this fixes).
+      const QUEUE_POLL_MS = 10000;
+      setInterval(async () => {
+        if (document.body.dataset.lockState === 'you') return;
+        try {
+          const response = await fetch('/tracks/queue-fragment');
+          if (!response.ok) return;
+          const html = await response.text();
+          const filterValue = document.getElementById('track-filter')?.value ?? '';
+          queueBody.innerHTML = html;
+          wireQueueBody();
+          const newFilterInput = document.getElementById('track-filter');
+          if (newFilterInput && filterValue) {
+            newFilterInput.value = filterValue;
+            newFilterInput.dispatchEvent(new Event('input'));
+          }
+        } catch (err) {
+          // Transient network hiccup — leave the current view as-is, try
+          // again next tick.
+        }
+      }, QUEUE_POLL_MS);
     </script>
   <% } %>
 <%- include('partials/footer') %>
