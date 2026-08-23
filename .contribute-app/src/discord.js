@@ -85,18 +85,29 @@ function describeRateLimit({ global, retryAfterSeconds, body, rawBody, headers }
 // neither a login nor a publish should ever be blocked or failed by a
 // notification going wrong. webhookUrl/fetchFn/logError/sleepFn are
 // injected so tests never make a real network call or actually wait.
-async function postToDiscord(content, { webhookUrl, fetchFn, log, logError, what, sleepFn = defaultSleep, retried = false }) {
-  if (!webhookUrl) return;
+//
+// relayUrl/relaySecret route the POST through discord-relay-worker/ instead
+// of straight to Discord — see that Worker's own doc comment for why: a
+// Cloudflare-level IP ban on Render's shared outbound IP, not anything
+// Discord's own API is doing, that no retry logic could ever route around.
+// When relayUrl is set, it's used as the actual fetch target (with the
+// shared secret attached) and webhookUrl is never touched by this module at
+// all — the relay holds the real webhook URL as its own secret instead.
+async function postToDiscord(content, { webhookUrl, relayUrl, relaySecret, fetchFn, log, logError, what, sleepFn = defaultSleep, retried = false }) {
+  const targetUrl = relayUrl || webhookUrl;
+  if (!targetUrl) return;
   try {
     // A timestamped line per real attempt (log() prepends one — see
     // src/logger.js) — the only way to actually tell, from the logs
     // alone, whether two notifications are landing close together (real
     // overlapping activity, or a duplicate-call bug) instead of guessing
     // at it indirectly from 429s.
-    log(`Discord ${what} notification: attempt ${retried ? 2 : 1}`);
-    const response = await fetchFn(webhookUrl, {
+    log(`Discord ${what} notification: attempt ${retried ? 2 : 1}${relayUrl ? " (via relay)" : ""}`);
+    const headers = { "Content-Type": "application/json" };
+    if (relayUrl && relaySecret) headers["X-Relay-Secret"] = relaySecret;
+    const response = await fetchFn(targetUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ content }),
     });
     if (response.status === 429) {
@@ -109,7 +120,7 @@ async function postToDiscord(content, { webhookUrl, fetchFn, log, logError, what
         // value > cap) or because something else is going on entirely.
         log(`Discord ${what} notification: HTTP 429 (${describeRateLimit(info)}), waiting ${waitSeconds}s`);
         await sleepFn(waitSeconds * 1000);
-        return postToDiscord(content, { webhookUrl, fetchFn, log, logError, what, sleepFn, retried: true });
+        return postToDiscord(content, { webhookUrl, relayUrl, relaySecret, fetchFn, log, logError, what, sleepFn, retried: true });
       }
       // global: true is the signal to look at Discord/Render's shared-IP
       // rate limiting rather than at our own call volume — a retry can't
@@ -129,14 +140,25 @@ async function postToDiscord(content, { webhookUrl, fetchFn, log, logError, what
 
 // DISCORD_WEBHOOK_URL is optional, same reasoning as ADMIN_PASSWORD_HASH —
 // deployments that don't set it simply never send notifications, rather
-// than failing to boot.
+// than failing to boot. DISCORD_RELAY_URL/DISCORD_RELAY_SECRET are also
+// optional and independent of it — when set, they take priority (see
+// postToDiscord above); when unset, this falls back to posting straight to
+// DISCORD_WEBHOOK_URL exactly as before the relay existed.
 export async function notifyLogin(
   { displayName, isAdmin = false, isDemo = false },
-  { webhookUrl = process.env.DISCORD_WEBHOOK_URL, fetchFn = fetch, log = logDefault, logError = logErrorDefault, sleepFn } = {}
+  {
+    webhookUrl = process.env.DISCORD_WEBHOOK_URL,
+    relayUrl = process.env.DISCORD_RELAY_URL,
+    relaySecret = process.env.DISCORD_RELAY_SECRET,
+    fetchFn = fetch,
+    log = logDefault,
+    logError = logErrorDefault,
+    sleepFn,
+  } = {}
 ) {
   const tag = isDemo ? " (demo)" : isAdmin ? " (admin)" : "";
   const content = `🎧 **${displayName}**${tag} logged in to TheFieldMixtape.`;
-  await postToDiscord(content, { webhookUrl, fetchFn, log, logError, what: "login", sleepFn });
+  await postToDiscord(content, { webhookUrl, relayUrl, relaySecret, fetchFn, log, logError, what: "login", sleepFn });
 }
 
 // Only meant to be called for a real (non-dry-run) publish — the caller
@@ -145,7 +167,15 @@ export async function notifyLogin(
 // returns (see src/publish.js's addedNames/deletedNames), not filenames.
 export async function notifyPublish(
   { displayName, added = [], deleted = [], versionNumber, thunderstoreUrl },
-  { webhookUrl = process.env.DISCORD_WEBHOOK_URL, fetchFn = fetch, log = logDefault, logError = logErrorDefault, sleepFn } = {}
+  {
+    webhookUrl = process.env.DISCORD_WEBHOOK_URL,
+    relayUrl = process.env.DISCORD_RELAY_URL,
+    relaySecret = process.env.DISCORD_RELAY_SECRET,
+    fetchFn = fetch,
+    log = logDefault,
+    logError = logErrorDefault,
+    sleepFn,
+  } = {}
 ) {
   const lines = [`📦 **${displayName}** published TheFieldMixtape v${versionNumber}`];
   if (added.length > 0) {
@@ -157,5 +187,5 @@ export async function notifyPublish(
   if (thunderstoreUrl) {
     lines.push("", thunderstoreUrl);
   }
-  await postToDiscord(lines.join("\n"), { webhookUrl, fetchFn, log, logError, what: "publish", sleepFn });
+  await postToDiscord(lines.join("\n"), { webhookUrl, relayUrl, relaySecret, fetchFn, log, logError, what: "publish", sleepFn });
 }

@@ -420,6 +420,92 @@ test("a 429 with a body that isn't valid JSON logs the raw text instead of silen
   assert.match(failureLine, /<unparsed: <html>rate limited<\/html>>/);
 });
 
+// --- Relay routing (see discord-relay-worker/ and the doc comment on
+// postToDiscord in src/discord.js) ---
+
+test("when a relay URL is configured, it's used as the fetch target instead of the direct webhook URL", async () => {
+  const fetchFn = fakeFetch();
+  await notifyLogin(
+    { displayName: "Rob" },
+    {
+      webhookUrl: "https://discord.example/webhook",
+      relayUrl: "https://relay.example/post",
+      relaySecret: "shh",
+      fetchFn,
+      log: NOOP_LOG,
+    }
+  );
+  assert.equal(fetchFn.calls.length, 1);
+  assert.equal(fetchFn.calls[0].url, "https://relay.example/post");
+});
+
+test("the relay secret is sent as a header only when routing through the relay", async () => {
+  const fetchFn = fakeFetch();
+  await notifyLogin(
+    { displayName: "Rob" },
+    {
+      webhookUrl: "https://discord.example/webhook",
+      relayUrl: "https://relay.example/post",
+      relaySecret: "shh",
+      fetchFn,
+      log: NOOP_LOG,
+    }
+  );
+  assert.equal(fetchFn.calls[0].options.headers["X-Relay-Secret"], "shh");
+});
+
+test("with no relay URL configured, it falls back to posting straight to the webhook URL, with no relay secret header", async () => {
+  const fetchFn = fakeFetch();
+  await notifyLogin(
+    { displayName: "Rob" },
+    { webhookUrl: "https://discord.example/webhook", relayUrl: undefined, relaySecret: undefined, fetchFn, log: NOOP_LOG }
+  );
+  assert.equal(fetchFn.calls[0].url, "https://discord.example/webhook");
+  assert.equal(fetchFn.calls[0].options.headers["X-Relay-Secret"], undefined);
+});
+
+test("nothing is sent at all when neither a relay URL nor a webhook URL is configured", async () => {
+  const fetchFn = fakeFetch();
+  await notifyLogin({ displayName: "Rob" }, { webhookUrl: undefined, relayUrl: undefined, relaySecret: undefined, fetchFn, log: NOOP_LOG });
+  assert.equal(fetchFn.calls.length, 0);
+});
+
+test("a 429 through the relay is retried the same way as a direct 429, still targeting the relay", async () => {
+  const fetchFn = fakeFetchSequence(rateLimitResponse(0.1), { ok: true, status: 200 });
+  const sleepFn = fakeSleep();
+
+  await notifyLogin(
+    { displayName: "Rob" },
+    {
+      webhookUrl: "https://discord.example/webhook",
+      relayUrl: "https://relay.example/post",
+      relaySecret: "shh",
+      fetchFn,
+      sleepFn,
+      log: NOOP_LOG,
+      logError: () => {},
+    }
+  );
+
+  assert.equal(fetchFn.calls.length, 2);
+  assert.ok(fetchFn.calls.every((c) => c.url === "https://relay.example/post"));
+});
+
+test("notifyPublish also routes through the relay when configured", async () => {
+  const fetchFn = fakeFetch();
+  await notifyPublish(
+    { displayName: "Rob", added: ["A - B"], deleted: [], versionNumber: "1.0.0" },
+    {
+      webhookUrl: "https://discord.example/webhook",
+      relayUrl: "https://relay.example/post",
+      relaySecret: "shh",
+      fetchFn,
+      log: NOOP_LOG,
+    }
+  );
+  assert.equal(fetchFn.calls[0].url, "https://relay.example/post");
+});
+
 test("notifyPublish also retries a 429 the same way", async () => {
   const fetchFn = fakeFetchSequence(rateLimitResponse(0.1), { ok: true, status: 200 });
   const sleepFn = fakeSleep();

@@ -4,5 +4,6 @@ LinerNotes.html
 .contribute-app/node_modules/
 .contribute-app/.env
 .contribute-app/legacy-track-attribution.json
+.contribute-app/discord-relay-worker/.wrangler/
 /build/
 /convert files/
