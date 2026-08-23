@@ -26,12 +26,19 @@ function fakeFetchSequence(...responses) {
   return fn;
 }
 
-function rateLimitResponse(retryAfterSeconds, global = false) {
+function rateLimitResponse(retryAfterSeconds, global = false, headers = {}) {
+  const lowerHeaders = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
   return {
     ok: false,
     status: 429,
     json: async () => ({ message: "You are being rate limited.", retry_after: retryAfterSeconds, global }),
-    headers: { get: () => String(retryAfterSeconds) },
+    headers: {
+      get: (name) => {
+        const key = name.toLowerCase();
+        if (key in lowerHeaders) return lowerHeaders[key];
+        return key === "retry-after" ? String(retryAfterSeconds) : null;
+      },
+    },
   };
 }
 
@@ -274,6 +281,7 @@ test("a 429 followed by a second 429 only retries once and logs the final failur
   assert.equal(sleepFn.waits.length, 1);
   assert.ok(logLines.some((l) => l.includes("429")));
   assert.ok(logLines.some((l) => l.includes("global: false")));
+  assert.ok(logLines.some((l) => l.includes("retry_after: 0.2s")), "the final failure line names the real retry_after Discord asked for");
 });
 
 test("a global: true 429 is logged distinctly — the signal to look at shared-IP rate limiting, not this app's own call volume", async () => {
@@ -290,7 +298,7 @@ test("a global: true 429 is logged distinctly — the signal to look at shared-I
 });
 
 test("the retry wait is capped, regardless of how long Discord asks for", async () => {
-  const fetchFn = fakeFetchSequence(rateLimitResponse(60), { ok: true, status: 200 });
+  const fetchFn = fakeFetchSequence(rateLimitResponse(9999), { ok: true, status: 200 });
   const sleepFn = fakeSleep();
 
   await notifyLogin(
@@ -298,7 +306,61 @@ test("the retry wait is capped, regardless of how long Discord asks for", async 
     { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, log: NOOP_LOG, logError: () => {} }
   );
 
-  assert.ok(sleepFn.waits[0] <= 5000, `waited ${sleepFn.waits[0]}ms, expected the 5s cap to apply`);
+  assert.ok(sleepFn.waits[0] <= 30000, `waited ${sleepFn.waits[0]}ms, expected the 30s cap to apply`);
+});
+
+test("the real, uncapped retry_after Discord asked for is logged even when it exceeds the cap", async () => {
+  const fetchFn = fakeFetchSequence(rateLimitResponse(9999), { ok: true, status: 200 });
+  const sleepFn = fakeSleep();
+  const logLines = [];
+
+  await notifyLogin(
+    { displayName: "Rob" },
+    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, log: (...args) => logLines.push(args.join(" ")), logError: () => {} }
+  );
+
+  assert.ok(
+    logLines.some((l) => l.includes("9999") && l.includes("waiting 30s")),
+    `expected a log line naming both the real requested wait and the capped wait, got: ${JSON.stringify(logLines)}`
+  );
+});
+
+test("Discord's X-RateLimit-Scope/Bucket/Limit/Remaining headers are surfaced in the failure log when present", async () => {
+  const headers = {
+    "X-RateLimit-Scope": "shared",
+    "X-RateLimit-Bucket": "abc123",
+    "X-RateLimit-Limit": "5",
+    "X-RateLimit-Remaining": "0",
+  };
+  const fetchFn = fakeFetchSequence(rateLimitResponse(0.2, false, headers), rateLimitResponse(0.2, false, headers));
+  const sleepFn = fakeSleep();
+  const logLines = [];
+
+  await notifyLogin(
+    { displayName: "Rob" },
+    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, log: NOOP_LOG, logError: (...args) => logLines.push(args.join(" ")) }
+  );
+
+  const failureLine = logLines.find((l) => l.includes("failed"));
+  assert.ok(failureLine, "expected a final failure line");
+  assert.match(failureLine, /scope: shared/);
+  assert.match(failureLine, /bucket: abc123/);
+  assert.match(failureLine, /limit: 5/);
+  assert.match(failureLine, /remaining: 0/);
+});
+
+test("rate-limit headers that are absent are simply omitted from the log line, not printed as null/undefined", async () => {
+  const fetchFn = fakeFetchSequence(rateLimitResponse(0.2, false), rateLimitResponse(0.2, false));
+  const sleepFn = fakeSleep();
+  const logLines = [];
+
+  await notifyLogin(
+    { displayName: "Rob" },
+    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, log: NOOP_LOG, logError: (...args) => logLines.push(args.join(" ")) }
+  );
+
+  const failureLine = logLines.find((l) => l.includes("failed"));
+  assert.doesNotMatch(failureLine, /scope:|bucket:|limit:|remaining:|null|undefined/);
 });
 
 test("notifyPublish also retries a 429 the same way", async () => {

@@ -6,9 +6,15 @@ const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // short burst window — a couple of logins/publishes landing within a
 // second or two of each other is enough to trip it even at low overall
 // volume. Cap how long a single retry is willing to wait regardless of
-// what Discord asks for, since this is a best-effort convenience
-// notification, not something worth blocking on for long.
-const MAX_RETRY_AFTER_SECONDS = 5;
+// what Discord asks for, as a guard against a runaway value — but this
+// call is always fire-and-forget (never awaited by anything a user is
+// waiting on), so there's no real cost to waiting out a longer
+// Discord-requested cooldown. A too-tight cap is actively harmful: if
+// Discord's real retry_after exceeds it, the retry fires while the
+// webhook is still inside its cooldown window and is guaranteed to 429
+// again — indistinguishable in the logs from a "retry that should have
+// worked but didn't" unless the real requested value is logged too.
+const MAX_RETRY_AFTER_SECONDS = 30;
 
 // Discord's 429 response carries the wait time in the JSON body
 // (`retry_after`, in seconds — the documented, authoritative source) and
@@ -20,24 +26,51 @@ const MAX_RETRY_AFTER_SECONDS = 5;
 // throttling the whole outbound IP, not this app specifically — common on
 // shared-IP hosting (Render's free tier, Cloudflare Workers, etc.), where
 // unrelated traffic from other tenants on the same IP pool can trip it.
+//
+// Also pulled: Discord's `X-RateLimit-*` headers, present on the 429
+// independent of the JSON body. `scope` is the most diagnostic of these —
+// it reads "shared" specifically when a limit is enforced across more than
+// one caller hitting the same resource (as opposed to "user", one caller's
+// own bucket) — the clearest possible confirmation, if it shows up, that
+// something *other* than this app's own call volume is hitting this exact
+// webhook (e.g. a second app instance configured with the same URL).
 async function parseRateLimitInfo(response) {
   let retryAfterSeconds = null;
   let global = false;
+  let message = null;
   try {
     const body = await response.json();
     if (typeof body?.retry_after === "number") retryAfterSeconds = body.retry_after;
     if (body?.global === true) global = true;
+    if (typeof body?.message === "string") message = body.message;
   } catch {
     // Not JSON, already consumed, or no .json() at all — fall through to
-    // the header for the wait time; global stays false, since there's no
-    // header equivalent for it.
+    // the header for the wait time; global/message stay at their defaults,
+    // since there's no header equivalent for either.
   }
   if (retryAfterSeconds === null) {
     const header = response.headers?.get?.("retry-after");
     const parsed = header ? Number(header) : NaN;
     retryAfterSeconds = Number.isFinite(parsed) ? parsed : 1;
   }
-  return { retryAfterSeconds, global };
+  const scope = response.headers?.get?.("x-ratelimit-scope") ?? null;
+  const bucket = response.headers?.get?.("x-ratelimit-bucket") ?? null;
+  const limit = response.headers?.get?.("x-ratelimit-limit") ?? null;
+  const remaining = response.headers?.get?.("x-ratelimit-remaining") ?? null;
+  return { retryAfterSeconds, global, message, scope, bucket, limit, remaining };
+}
+
+// Renders only the fields that were actually present — most of these are
+// undocumented-for-webhooks and may not show up on every 429, so a fixed
+// template would print a wall of "null"s that bury the fields that matter.
+function describeRateLimit({ global, retryAfterSeconds, message, scope, bucket, limit, remaining }) {
+  const parts = [`global: ${global}`, `retry_after: ${retryAfterSeconds}s`];
+  if (scope) parts.push(`scope: ${scope}`);
+  if (bucket) parts.push(`bucket: ${bucket}`);
+  if (limit !== null) parts.push(`limit: ${limit}`);
+  if (remaining !== null) parts.push(`remaining: ${remaining}`);
+  if (message) parts.push(`message: "${message}"`);
+  return parts.join(", ");
 }
 
 // Shared by notifyLogin/notifyPublish below. Never throws — a broken or
@@ -60,16 +93,23 @@ async function postToDiscord(content, { webhookUrl, fetchFn, log, logError, what
       body: JSON.stringify({ content }),
     });
     if (response.status === 429) {
-      const { retryAfterSeconds, global } = await parseRateLimitInfo(response);
+      const info = await parseRateLimitInfo(response);
       if (!retried) {
-        await sleepFn(Math.min(retryAfterSeconds, MAX_RETRY_AFTER_SECONDS) * 1000);
+        const waitSeconds = Math.min(info.retryAfterSeconds, MAX_RETRY_AFTER_SECONDS);
+        // Logs everything Discord told us before we decide how long to
+        // wait — the only way to tell after the fact whether a subsequent
+        // second 429 happened because the cap cut the wait short (real
+        // value > cap) or because something else is going on entirely.
+        log(`Discord ${what} notification: HTTP 429 (${describeRateLimit(info)}), waiting ${waitSeconds}s`);
+        await sleepFn(waitSeconds * 1000);
         return postToDiscord(content, { webhookUrl, fetchFn, log, logError, what, sleepFn, retried: true });
       }
       // global: true is the signal to look at Discord/Render's shared-IP
       // rate limiting rather than at our own call volume — a retry can't
       // route around a whole-IP block, only around this-webhook-specific
-      // throttling.
-      logError(`Discord ${what} notification failed: HTTP 429 (global: ${global})`);
+      // throttling. scope: "shared" (if present) is the same signal at the
+      // webhook level instead of the IP level.
+      logError(`Discord ${what} notification failed: HTTP 429 (${describeRateLimit(info)})`);
       return;
     }
     if (!response.ok) {
