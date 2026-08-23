@@ -140,6 +140,7 @@ export function createTracksRouter(config, lockStore) {
   // browsing/filtering the live tracklist.
   router.get("/tracks/queue-fragment", requireAuth, async (req, res) => {
     const isAdmin = req.session.isAdmin === true;
+    const isDemo = req.session.isDemo === true;
     try {
       const state = await loadQueueState(config);
       const pendingCount = state.pendingAddRows.length + state.pendingDeleteRows.length;
@@ -147,6 +148,8 @@ export function createTracksRouter(config, lockStore) {
       res.render("partials/queue-body", {
         ...state,
         isAdmin,
+        isDemo,
+        displayName: req.session.displayName,
         maxTracks: MAX_TRACKS,
         maxTrackFileSizeKb: MAX_TRACK_FILE_SIZE_KB,
         pendingCount,

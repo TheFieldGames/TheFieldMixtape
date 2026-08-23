@@ -281,6 +281,14 @@ button {
   cursor: default;
 }
 
+/* .side-b is now a flex column (see .layout below) whose default
+   align-items: stretch would otherwise pull this content-sized button
+   full width, unlike every other (already block-level, already
+   full-width) child around it. */
+#add-to-queue-button {
+  align-self: flex-start;
+}
+
 .link-button {
   background: none;
   border: none;
@@ -417,8 +425,15 @@ a {
    (public/scroll-fade.js) toggles .visible based on actual scroll
    position. ---------- */
 
+/* Also a flex column (not just position:relative) so its scrollable child
+   (.track-table-scroll / .queue-scroll) can flex-grow to fill whatever
+   height .scroll-wrap itself ends up with — see .side-a/.side-b below. */
 .scroll-wrap {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .scroll-fade {
@@ -455,8 +470,13 @@ a {
   display: none;
 }
 
+/* 22rem is the *default* height — flex-grow lets it expand past that to
+   fill whatever extra room .side-a picks up from being height-matched to
+   a taller .side-b (see .layout/.side-a/.side-b below), instead of the
+   queue outgrowing the tracklist. */
 .track-table-scroll {
-  max-height: 22rem;
+  flex: 1 1 22rem;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -666,12 +686,11 @@ body[data-lock-state="other"] .lock-hint {
   padding-bottom: calc(var(--batch-bar-height, 112px) + 1.5rem);
 }
 
-/* Both the top-bar (error state) and account-bar (name/log-out) sit
-   directly on the background photo, which is often light — without an
-   opaque-ish panel behind them, light/cream text blends straight into it.
-   Same treatment as the deck-bar below, for the same reason. */
-.top-bar,
-.account-bar {
+/* The top-bar (error state) sits directly on the background photo, which
+   is often light — without an opaque-ish panel behind it, light/cream text
+   blends straight into it. Same treatment as the deck-bar below, for the
+   same reason. */
+.top-bar {
   max-width: 1180px;
   margin: 0 auto 0.75rem;
   padding: 0.6rem 1rem;
@@ -680,25 +699,23 @@ body[data-lock-state="other"] .lock-hint {
   -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
-}
-
-.top-bar {
   text-align: center;
 }
 
-.account-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-
+/* align-items: stretch (rather than flex-start) means Side A and Side B
+   always end up the same height — whichever one's natural content is
+   shorter gets stretched to match the taller one, and the flex-grow rules
+   on .track-table-scroll/.queue-scroll above turn that extra height into
+   more visible rows instead of dead space. This is also why the Queue
+   panel can never grow taller than the Tracks panel: if the queue's
+   content wants more room than the tracklist's default height, the
+   tracklist grows to match it, not the other way around. flex-wrap
+   naturally disables this on narrow viewports, since each side wraps onto
+   its own single-item row where "stretch to the tallest" is a no-op. */
 .layout {
   display: flex;
   gap: 1.75rem;
-  align-items: flex-start;
+  align-items: stretch;
   flex-wrap: wrap;
   justify-content: center;
 }
@@ -706,6 +723,8 @@ body[data-lock-state="other"] .lock-hint {
 .side-a,
 .side-b {
   margin: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .side-a {
@@ -1002,8 +1021,12 @@ body[data-lock-state="other"] .lock-hint {
   border: 1px solid rgb(193 85 74 / 45%);
 }
 
+/* Same default-height-but-can-grow treatment as .track-table-scroll —
+   when both the Adding and Removing lists are present, they share
+   whatever extra height .side-b picks up beyond its natural size. */
 .queue-scroll {
-  max-height: 13rem;
+  flex: 1 1 13rem;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -1134,7 +1157,7 @@ body[data-lock-state="other"] .lock-hint {
 }
 
 .batch-quota,
-.batch-link {
+.batch-identity {
   padding-right: 1.1rem;
   border-right: 1px solid var(--border-subtle);
 }
@@ -1145,9 +1168,18 @@ body[data-lock-state="other"] .lock-hint {
   gap: 0.5rem;
 }
 
-.batch-link {
+/* Wordmark + "who's logged in" + log-out, grouped together since the
+   batch bar is already permanent chrome carrying identity/branding — no
+   need for a separate persistent strip just for the account state. */
+.batch-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   font-family: "IBM Plex Mono", monospace;
   font-size: 0.7rem;
+}
+
+.batch-link {
   color: var(--text-muted);
   text-decoration: none;
 }
@@ -1155,6 +1187,19 @@ body[data-lock-state="other"] .lock-hint {
 .batch-link:hover {
   color: var(--text-cream);
   text-decoration: underline;
+}
+
+.batch-user {
+  color: var(--text-muted);
+}
+
+.batch-logout {
+  font-size: inherit;
+  color: var(--text-muted);
+}
+
+.batch-logout:hover {
+  color: var(--text-cream);
 }
 
 .batch-quota-track {

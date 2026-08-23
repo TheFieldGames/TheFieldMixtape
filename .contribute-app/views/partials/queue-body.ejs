@@ -118,7 +118,13 @@
 </div>
 
 <div class="batch-bar">
-  <a href="<%= thunderstoreUrl %>" target="_blank" rel="noopener" class="batch-link">TheFieldMixtape &#8599;</a>
+  <div class="batch-identity">
+    <a href="<%= thunderstoreUrl %>" target="_blank" rel="noopener" class="batch-link">TheFieldMixtape &#8599;</a>
+    <span class="batch-user"><%= displayName %><% if (isDemo) { %> <span class="tag tag-pending" title="Demo sessions can edit and queue changes, but Publish always runs as a dry run.">demo</span><% } %></span>
+    <form method="POST" action="/logout" class="inline-form">
+      <button type="submit" class="link-button batch-logout">log out</button>
+    </form>
+  </div>
   <% if (usageInfo) { %>
     <div class="batch-quota">
       <div class="batch-quota-track"><div class="batch-quota-fill<%= usageInfo.locked ? ' locked' : '' %>" style="width: <%= Math.min(100, (parseFloat(usageInfo.usageGB) / parseFloat(usageInfo.capGB)) * 100).toFixed(1) %>%"></div></div>

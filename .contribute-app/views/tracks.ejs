@@ -2,12 +2,6 @@
   <% if (error) { %>
     <p class="error top-bar"><%= error %></p>
   <% } else { %>
-    <div class="account-bar">
-      <span>Logged in as <strong><%= displayName %></strong><% if (isDemo) { %> <span class="tag tag-pending" title="Demo sessions can edit and queue changes, but Publish always runs as a dry run.">demo</span><% } %></span>
-      <form method="POST" action="/logout" class="inline-form">
-        <button type="submit" class="btn-secondary">log out</button>
-      </form>
-    </div>
     <%- include('partials/deck-bar') %>
 
     <% const pendingCount = pendingAddRows.length + pendingDeleteRows.length; %>
@@ -15,7 +9,7 @@
 
     <div id="queue-body">
       <%- include('partials/queue-body', {
-        rows, pendingAddRows, pendingDeleteRows, usageInfo, isAdmin,
+        rows, pendingAddRows, pendingDeleteRows, usageInfo, isAdmin, displayName, isDemo,
         maxTracks, maxTrackFileSizeKb, thunderstoreUrl, pendingCount, netAfterPublish,
       }) %>
     </div>
