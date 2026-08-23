@@ -1,4 +1,4 @@
-import { logError as logErrorDefault } from "./logger.js";
+import { log as logDefault, logError as logErrorDefault } from "./logger.js";
 
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -45,9 +45,15 @@ async function parseRateLimitInfo(response) {
 // neither a login nor a publish should ever be blocked or failed by a
 // notification going wrong. webhookUrl/fetchFn/logError/sleepFn are
 // injected so tests never make a real network call or actually wait.
-async function postToDiscord(content, { webhookUrl, fetchFn, logError, what, sleepFn = defaultSleep, retried = false }) {
+async function postToDiscord(content, { webhookUrl, fetchFn, log, logError, what, sleepFn = defaultSleep, retried = false }) {
   if (!webhookUrl) return;
   try {
+    // A timestamped line per real attempt (log() prepends one — see
+    // src/logger.js) — the only way to actually tell, from the logs
+    // alone, whether two notifications are landing close together (real
+    // overlapping activity, or a duplicate-call bug) instead of guessing
+    // at it indirectly from 429s.
+    log(`Discord ${what} notification: attempt ${retried ? 2 : 1}`);
     const response = await fetchFn(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -57,7 +63,7 @@ async function postToDiscord(content, { webhookUrl, fetchFn, logError, what, sle
       const { retryAfterSeconds, global } = await parseRateLimitInfo(response);
       if (!retried) {
         await sleepFn(Math.min(retryAfterSeconds, MAX_RETRY_AFTER_SECONDS) * 1000);
-        return postToDiscord(content, { webhookUrl, fetchFn, logError, what, sleepFn, retried: true });
+        return postToDiscord(content, { webhookUrl, fetchFn, log, logError, what, sleepFn, retried: true });
       }
       // global: true is the signal to look at Discord/Render's shared-IP
       // rate limiting rather than at our own call volume — a retry can't
@@ -79,11 +85,11 @@ async function postToDiscord(content, { webhookUrl, fetchFn, logError, what, sle
 // than failing to boot.
 export async function notifyLogin(
   { displayName, isAdmin = false, isDemo = false },
-  { webhookUrl = process.env.DISCORD_WEBHOOK_URL, fetchFn = fetch, logError = logErrorDefault, sleepFn } = {}
+  { webhookUrl = process.env.DISCORD_WEBHOOK_URL, fetchFn = fetch, log = logDefault, logError = logErrorDefault, sleepFn } = {}
 ) {
   const tag = isDemo ? " (demo)" : isAdmin ? " (admin)" : "";
   const content = `🎧 **${displayName}**${tag} logged in to TheFieldMixtape.`;
-  await postToDiscord(content, { webhookUrl, fetchFn, logError, what: "login", sleepFn });
+  await postToDiscord(content, { webhookUrl, fetchFn, log, logError, what: "login", sleepFn });
 }
 
 // Only meant to be called for a real (non-dry-run) publish — the caller
@@ -92,7 +98,7 @@ export async function notifyLogin(
 // returns (see src/publish.js's addedNames/deletedNames), not filenames.
 export async function notifyPublish(
   { displayName, added = [], deleted = [], versionNumber, thunderstoreUrl },
-  { webhookUrl = process.env.DISCORD_WEBHOOK_URL, fetchFn = fetch, logError = logErrorDefault, sleepFn } = {}
+  { webhookUrl = process.env.DISCORD_WEBHOOK_URL, fetchFn = fetch, log = logDefault, logError = logErrorDefault, sleepFn } = {}
 ) {
   const lines = [`📦 **${displayName}** published TheFieldMixtape v${versionNumber}`];
   if (added.length > 0) {
@@ -104,5 +110,5 @@ export async function notifyPublish(
   if (thunderstoreUrl) {
     lines.push("", thunderstoreUrl);
   }
-  await postToDiscord(lines.join("\n"), { webhookUrl, fetchFn, logError, what: "publish", sleepFn });
+  await postToDiscord(lines.join("\n"), { webhookUrl, fetchFn, log, logError, what: "publish", sleepFn });
 }

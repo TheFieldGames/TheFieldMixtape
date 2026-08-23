@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { notifyLogin, notifyPublish } from "../src/discord.js";
 
+const NOOP_LOG = () => {};
+
 function fakeFetch(response = { ok: true, status: 200 }) {
   const calls = [];
   const fn = async (url, options) => {
@@ -44,13 +46,13 @@ function fakeSleep() {
 
 test("notifyLogin does nothing (never calls fetch) when no webhook URL is configured", async () => {
   const fetchFn = fakeFetch();
-  await notifyLogin({ displayName: "Rob" }, { webhookUrl: undefined, fetchFn });
+  await notifyLogin({ displayName: "Rob" }, { webhookUrl: undefined, fetchFn, log: NOOP_LOG });
   assert.equal(fetchFn.calls.length, 0);
 });
 
 test("notifyLogin POSTs the webhook URL with a JSON content body naming the display name", async () => {
   const fetchFn = fakeFetch();
-  await notifyLogin({ displayName: "Rob" }, { webhookUrl: "https://discord.example/webhook", fetchFn });
+  await notifyLogin({ displayName: "Rob" }, { webhookUrl: "https://discord.example/webhook", fetchFn, log: NOOP_LOG });
 
   assert.equal(fetchFn.calls.length, 1);
   const { url, options } = fetchFn.calls[0];
@@ -63,7 +65,10 @@ test("notifyLogin POSTs the webhook URL with a JSON content body naming the disp
 
 test("notifyLogin tags an admin login distinctly from a plain one", async () => {
   const fetchFn = fakeFetch();
-  await notifyLogin({ displayName: "Rob", isAdmin: true }, { webhookUrl: "https://discord.example/webhook", fetchFn });
+  await notifyLogin(
+    { displayName: "Rob", isAdmin: true },
+    { webhookUrl: "https://discord.example/webhook", fetchFn, log: NOOP_LOG }
+  );
   const body = JSON.parse(fetchFn.calls[0].options.body);
   assert.match(body.content, /\(admin\)/);
 });
@@ -72,7 +77,7 @@ test("notifyLogin tags a demo login distinctly, and demo wins over admin if some
   const fetchFn = fakeFetch();
   await notifyLogin(
     { displayName: "Demo", isAdmin: true, isDemo: true },
-    { webhookUrl: "https://discord.example/webhook", fetchFn }
+    { webhookUrl: "https://discord.example/webhook", fetchFn, log: NOOP_LOG }
   );
   const body = JSON.parse(fetchFn.calls[0].options.body);
   assert.match(body.content, /\(demo\)/);
@@ -81,7 +86,7 @@ test("notifyLogin tags a demo login distinctly, and demo wins over admin if some
 
 test("a plain login (neither admin nor demo) gets no parenthetical tag at all", async () => {
   const fetchFn = fakeFetch();
-  await notifyLogin({ displayName: "Alex" }, { webhookUrl: "https://discord.example/webhook", fetchFn });
+  await notifyLogin({ displayName: "Alex" }, { webhookUrl: "https://discord.example/webhook", fetchFn, log: NOOP_LOG });
   const body = JSON.parse(fetchFn.calls[0].options.body);
   assert.doesNotMatch(body.content, /\(/);
 });
@@ -92,7 +97,7 @@ test("a non-ok webhook response is logged, not thrown", async () => {
   await assert.doesNotReject(
     notifyLogin(
       { displayName: "Rob" },
-      { webhookUrl: "https://discord.example/webhook", fetchFn, logError: (...args) => logLines.push(args.join(" ")) }
+      { webhookUrl: "https://discord.example/webhook", fetchFn, log: NOOP_LOG, logError: (...args) => logLines.push(args.join(" ")) }
     )
   );
   assert.ok(logLines.some((l) => l.includes("500")));
@@ -106,10 +111,51 @@ test("a network-level failure (fetchFn rejects) is caught and logged, not thrown
   await assert.doesNotReject(
     notifyLogin(
       { displayName: "Rob" },
-      { webhookUrl: "https://discord.example/webhook", fetchFn, logError: (...args) => logLines.push(args.join(" ")) }
+      { webhookUrl: "https://discord.example/webhook", fetchFn, log: NOOP_LOG, logError: (...args) => logLines.push(args.join(" ")) }
     )
   );
   assert.ok(logLines.some((l) => l.includes("ENOTFOUND")));
+});
+
+// --- Per-attempt logging (the diagnostic for telling apart a real overlap
+// in activity from a duplicate-call bug — see the comment on
+// postToDiscord in src/discord.js) ---
+
+test("a successful notification logs exactly one 'attempt 1' line", async () => {
+  const fetchFn = fakeFetch();
+  const logLines = [];
+  await notifyLogin(
+    { displayName: "Rob" },
+    { webhookUrl: "https://discord.example/webhook", fetchFn, log: (...args) => logLines.push(args.join(" ")) }
+  );
+  assert.deepEqual(
+    logLines.filter((l) => l.includes("Discord login notification: attempt")),
+    ["Discord login notification: attempt 1"]
+  );
+});
+
+test("a retried notification logs both attempt 1 and attempt 2, in order", async () => {
+  const fetchFn = fakeFetchSequence(rateLimitResponse(0.1), { ok: true, status: 200 });
+  const sleepFn = fakeSleep();
+  const logLines = [];
+  await notifyPublish(
+    { displayName: "Rob", added: ["A - B"], deleted: [], versionNumber: "1.0.0" },
+    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, log: (...args) => logLines.push(args.join(" ")) }
+  );
+  assert.deepEqual(
+    logLines.filter((l) => l.includes("Discord publish notification: attempt")),
+    ["Discord publish notification: attempt 1", "Discord publish notification: attempt 2"]
+  );
+});
+
+test("nothing is logged at all (attempt or otherwise) when no webhook URL is configured", async () => {
+  const fetchFn = fakeFetch();
+  const logLines = [];
+  await notifyLogin(
+    { displayName: "Rob" },
+    { webhookUrl: undefined, fetchFn, log: (...args) => logLines.push(args.join(" ")) }
+  );
+  assert.equal(logLines.length, 0);
 });
 
 // --- notifyPublish ---
@@ -118,7 +164,7 @@ test("notifyPublish does nothing when no webhook URL is configured", async () =>
   const fetchFn = fakeFetch();
   await notifyPublish(
     { displayName: "Rob", added: ["A - B"], deleted: [], versionNumber: "1.4.8" },
-    { webhookUrl: undefined, fetchFn }
+    { webhookUrl: undefined, fetchFn, log: NOOP_LOG }
   );
   assert.equal(fetchFn.calls.length, 0);
 });
@@ -133,7 +179,7 @@ test("notifyPublish names who published, the version, and lists both added and d
       versionNumber: "1.4.8",
       thunderstoreUrl: "https://thunderstore.io/c/peak/p/TheField/TheFieldMixtape/",
     },
-    { webhookUrl: "https://discord.example/webhook", fetchFn }
+    { webhookUrl: "https://discord.example/webhook", fetchFn, log: NOOP_LOG }
   );
 
   const body = JSON.parse(fetchFn.calls[0].options.body);
@@ -150,7 +196,7 @@ test("notifyPublish omits the Added section entirely when nothing was added", as
   const fetchFn = fakeFetch();
   await notifyPublish(
     { displayName: "Rob", added: [], deleted: ["Old Track - Someone"], versionNumber: "1.4.9" },
-    { webhookUrl: "https://discord.example/webhook", fetchFn }
+    { webhookUrl: "https://discord.example/webhook", fetchFn, log: NOOP_LOG }
   );
   const body = JSON.parse(fetchFn.calls[0].options.body);
   assert.doesNotMatch(body.content, /Added:/);
@@ -161,7 +207,7 @@ test("notifyPublish omits the Removed section entirely when nothing was deleted"
   const fetchFn = fakeFetch();
   await notifyPublish(
     { displayName: "Rob", added: ["New Track - Someone"], deleted: [], versionNumber: "1.4.9" },
-    { webhookUrl: "https://discord.example/webhook", fetchFn }
+    { webhookUrl: "https://discord.example/webhook", fetchFn, log: NOOP_LOG }
   );
   const body = JSON.parse(fetchFn.calls[0].options.body);
   assert.match(body.content, /Added:/);
@@ -177,7 +223,7 @@ test("notifyPublish lists every added and deleted track, not just a count", asyn
       deleted: ["Track Three - Artist"],
       versionNumber: "2.0.0",
     },
-    { webhookUrl: "https://discord.example/webhook", fetchFn }
+    { webhookUrl: "https://discord.example/webhook", fetchFn, log: NOOP_LOG }
   );
   const body = JSON.parse(fetchFn.calls[0].options.body);
   assert.match(body.content, /Track One - Artist/);
@@ -191,7 +237,7 @@ test("a non-ok webhook response for a publish notification is logged, not thrown
   await assert.doesNotReject(
     notifyPublish(
       { displayName: "Rob", added: ["A - B"], deleted: [], versionNumber: "1.0.0" },
-      { webhookUrl: "https://discord.example/webhook", fetchFn, logError: (...args) => logLines.push(args.join(" ")) }
+      { webhookUrl: "https://discord.example/webhook", fetchFn, log: NOOP_LOG, logError: (...args) => logLines.push(args.join(" ")) }
     )
   );
   assert.ok(logLines.some((l) => l.includes("500")));
@@ -206,7 +252,7 @@ test("a 429 is retried once, waiting the exact retry_after Discord requested, an
 
   await notifyLogin(
     { displayName: "Rob" },
-    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, logError: (...args) => logLines.push(args.join(" ")) }
+    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, log: NOOP_LOG, logError: (...args) => logLines.push(args.join(" ")) }
   );
 
   assert.equal(fetchFn.calls.length, 2, "the original request plus exactly one retry");
@@ -221,7 +267,7 @@ test("a 429 followed by a second 429 only retries once and logs the final failur
 
   await notifyLogin(
     { displayName: "Rob" },
-    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, logError: (...args) => logLines.push(args.join(" ")) }
+    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, log: NOOP_LOG, logError: (...args) => logLines.push(args.join(" ")) }
   );
 
   assert.equal(fetchFn.calls.length, 2, "never more than one retry, even if the retry is also rate limited");
@@ -237,7 +283,7 @@ test("a global: true 429 is logged distinctly — the signal to look at shared-I
 
   await notifyLogin(
     { displayName: "Rob" },
-    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, logError: (...args) => logLines.push(args.join(" ")) }
+    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, log: NOOP_LOG, logError: (...args) => logLines.push(args.join(" ")) }
   );
 
   assert.ok(logLines.some((l) => l.includes("global: true")));
@@ -247,7 +293,10 @@ test("the retry wait is capped, regardless of how long Discord asks for", async 
   const fetchFn = fakeFetchSequence(rateLimitResponse(60), { ok: true, status: 200 });
   const sleepFn = fakeSleep();
 
-  await notifyLogin({ displayName: "Rob" }, { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, logError: () => {} });
+  await notifyLogin(
+    { displayName: "Rob" },
+    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, log: NOOP_LOG, logError: () => {} }
+  );
 
   assert.ok(sleepFn.waits[0] <= 5000, `waited ${sleepFn.waits[0]}ms, expected the 5s cap to apply`);
 });
@@ -258,7 +307,7 @@ test("notifyPublish also retries a 429 the same way", async () => {
 
   await notifyPublish(
     { displayName: "Rob", added: ["A - B"], deleted: [], versionNumber: "1.0.0" },
-    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, logError: () => {} }
+    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, log: NOOP_LOG, logError: () => {} }
   );
 
   assert.equal(fetchFn.calls.length, 2);
