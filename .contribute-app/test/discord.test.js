@@ -24,11 +24,11 @@ function fakeFetchSequence(...responses) {
   return fn;
 }
 
-function rateLimitResponse(retryAfterSeconds) {
+function rateLimitResponse(retryAfterSeconds, global = false) {
   return {
     ok: false,
     status: 429,
-    json: async () => ({ message: "You are being rate limited.", retry_after: retryAfterSeconds, global: false }),
+    json: async () => ({ message: "You are being rate limited.", retry_after: retryAfterSeconds, global }),
     headers: { get: () => String(retryAfterSeconds) },
   };
 }
@@ -214,8 +214,8 @@ test("a 429 is retried once, waiting the exact retry_after Discord requested, an
   assert.equal(logLines.length, 0, "a retry that succeeds logs nothing — it's not a failure from the caller's perspective");
 });
 
-test("a 429 followed by a second 429 only retries once and logs the final failure", async () => {
-  const fetchFn = fakeFetchSequence(rateLimitResponse(0.2), rateLimitResponse(0.2));
+test("a 429 followed by a second 429 only retries once and logs the final failure, noting global: false", async () => {
+  const fetchFn = fakeFetchSequence(rateLimitResponse(0.2, false), rateLimitResponse(0.2, false));
   const sleepFn = fakeSleep();
   const logLines = [];
 
@@ -227,6 +227,20 @@ test("a 429 followed by a second 429 only retries once and logs the final failur
   assert.equal(fetchFn.calls.length, 2, "never more than one retry, even if the retry is also rate limited");
   assert.equal(sleepFn.waits.length, 1);
   assert.ok(logLines.some((l) => l.includes("429")));
+  assert.ok(logLines.some((l) => l.includes("global: false")));
+});
+
+test("a global: true 429 is logged distinctly — the signal to look at shared-IP rate limiting, not this app's own call volume", async () => {
+  const fetchFn = fakeFetchSequence(rateLimitResponse(0.2, true), rateLimitResponse(0.2, true));
+  const sleepFn = fakeSleep();
+  const logLines = [];
+
+  await notifyLogin(
+    { displayName: "Rob" },
+    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, logError: (...args) => logLines.push(args.join(" ")) }
+  );
+
+  assert.ok(logLines.some((l) => l.includes("global: true")));
 });
 
 test("the retry wait is capped, regardless of how long Discord asks for", async () => {
