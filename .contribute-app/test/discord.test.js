@@ -26,19 +26,30 @@ function fakeFetchSequence(...responses) {
   return fn;
 }
 
-function rateLimitResponse(retryAfterSeconds, global = false, headers = {}) {
-  const lowerHeaders = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
+function rateLimitResponse(retryAfterSeconds, global = false, headers = {}, extraBodyFields = {}) {
+  const bodyText = JSON.stringify({ message: "You are being rate limited.", retry_after: retryAfterSeconds, global, ...extraBodyFields });
+  const allHeaders = { "retry-after": String(retryAfterSeconds), ...headers };
+  const lowerHeaders = Object.fromEntries(Object.entries(allHeaders).map(([k, v]) => [k.toLowerCase(), v]));
   return {
     ok: false,
     status: 429,
-    json: async () => ({ message: "You are being rate limited.", retry_after: retryAfterSeconds, global }),
+    text: async () => bodyText,
     headers: {
-      get: (name) => {
-        const key = name.toLowerCase();
-        if (key in lowerHeaders) return lowerHeaders[key];
-        return key === "retry-after" ? String(retryAfterSeconds) : null;
-      },
+      get: (name) => lowerHeaders[name.toLowerCase()] ?? null,
+      forEach: (cb) => Object.entries(lowerHeaders).forEach(([key, value]) => cb(value, key)),
     },
+  };
+}
+
+// A response with no body at all — Discord's real 429s are always JSON,
+// but a proxy/edge layer sitting in front of it (unrelated to Discord's own
+// API) could plausibly return something else entirely.
+function unparseableRateLimitResponse() {
+  return {
+    ok: false,
+    status: 429,
+    text: async () => "<html>rate limited</html>",
+    headers: { get: () => null, forEach: () => {} },
   };
 }
 
@@ -343,10 +354,10 @@ test("Discord's X-RateLimit-Scope/Bucket/Limit/Remaining headers are surfaced in
 
   const failureLine = logLines.find((l) => l.includes("failed"));
   assert.ok(failureLine, "expected a final failure line");
-  assert.match(failureLine, /scope: shared/);
-  assert.match(failureLine, /bucket: abc123/);
-  assert.match(failureLine, /limit: 5/);
-  assert.match(failureLine, /remaining: 0/);
+  assert.match(failureLine, /x-ratelimit-scope=shared/);
+  assert.match(failureLine, /x-ratelimit-bucket=abc123/);
+  assert.match(failureLine, /x-ratelimit-limit=5/);
+  assert.match(failureLine, /x-ratelimit-remaining=0/);
 });
 
 test("rate-limit headers that are absent are simply omitted from the log line, not printed as null/undefined", async () => {
@@ -360,7 +371,53 @@ test("rate-limit headers that are absent are simply omitted from the log line, n
   );
 
   const failureLine = logLines.find((l) => l.includes("failed"));
-  assert.doesNotMatch(failureLine, /scope:|bucket:|limit:|remaining:|null|undefined/);
+  assert.doesNotMatch(failureLine, /x-ratelimit-scope|x-ratelimit-bucket|x-ratelimit-limit|x-ratelimit-remaining|null|undefined/);
+});
+
+test("the retry-after header itself always shows up in the full header dump", async () => {
+  const fetchFn = fakeFetchSequence(rateLimitResponse(0.2, false), rateLimitResponse(0.2, false));
+  const sleepFn = fakeSleep();
+  const logLines = [];
+
+  await notifyLogin(
+    { displayName: "Rob" },
+    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, log: NOOP_LOG, logError: (...args) => logLines.push(args.join(" ")) }
+  );
+
+  const failureLine = logLines.find((l) => l.includes("failed"));
+  assert.match(failureLine, /retry-after=0\.2/);
+});
+
+test("an unanticipated body field Discord sends is included in the log too, not just the known ones", async () => {
+  const fetchFn = fakeFetchSequence(
+    rateLimitResponse(0.2, false, {}, { code: 20028, some_new_field: "surprise" }),
+    rateLimitResponse(0.2, false, {}, { code: 20028, some_new_field: "surprise" })
+  );
+  const sleepFn = fakeSleep();
+  const logLines = [];
+
+  await notifyLogin(
+    { displayName: "Rob" },
+    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, log: NOOP_LOG, logError: (...args) => logLines.push(args.join(" ")) }
+  );
+
+  const failureLine = logLines.find((l) => l.includes("failed"));
+  assert.match(failureLine, /"code":20028/);
+  assert.match(failureLine, /"some_new_field":"surprise"/);
+});
+
+test("a 429 with a body that isn't valid JSON logs the raw text instead of silently dropping it", async () => {
+  const fetchFn = fakeFetchSequence(unparseableRateLimitResponse(), unparseableRateLimitResponse());
+  const sleepFn = fakeSleep();
+  const logLines = [];
+
+  await notifyLogin(
+    { displayName: "Rob" },
+    { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, log: NOOP_LOG, logError: (...args) => logLines.push(args.join(" ")) }
+  );
+
+  const failureLine = logLines.find((l) => l.includes("failed"));
+  assert.match(failureLine, /<unparsed: <html>rate limited<\/html>>/);
 });
 
 test("notifyPublish also retries a 429 the same way", async () => {

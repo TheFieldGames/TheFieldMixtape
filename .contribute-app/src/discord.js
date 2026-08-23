@@ -19,58 +19,65 @@ const MAX_RETRY_AFTER_SECONDS = 30;
 // Discord's 429 response carries the wait time in the JSON body
 // (`retry_after`, in seconds — the documented, authoritative source) and
 // usually also as a `Retry-After` header; falls back to a plain 1s guess
-// if neither is present or parseable (e.g. a fake Response in tests that
-// doesn't implement .json()/.headers). The body also carries `global`,
-// which distinguishes two very different failure modes: `false` means
-// just this webhook is over its own limit; `true` means Discord is
-// throttling the whole outbound IP, not this app specifically — common on
-// shared-IP hosting (Render's free tier, Cloudflare Workers, etc.), where
-// unrelated traffic from other tenants on the same IP pool can trip it.
+// if neither is present or parseable (e.g. a minimal fake Response in
+// tests). The body also carries `global`, which distinguishes two very
+// different failure modes: `false` means just this webhook/route is over
+// its own limit; `true` means Discord is throttling the whole caller (IP
+// or bot token), not this specific request — common on shared-IP hosting
+// (Render's free tier, Cloudflare Workers, etc.), where unrelated traffic
+// from other tenants on the same IP pool can trip it.
 //
-// Also pulled: Discord's `X-RateLimit-*` headers, present on the 429
-// independent of the JSON body. `scope` is the most diagnostic of these —
-// it reads "shared" specifically when a limit is enforced across more than
-// one caller hitting the same resource (as opposed to "user", one caller's
-// own bucket) — the clearest possible confirmation, if it shows up, that
-// something *other* than this app's own call volume is hitting this exact
-// webhook (e.g. a second app instance configured with the same URL).
+// A Response's body can only be read once (it's a stream) — read the raw
+// text first, then JSON.parse it ourselves, so both the parsed fields
+// *and* the untouched raw body are available. Every response header is
+// captured too, not just the couple of named X-RateLimit-* ones we
+// initially guessed mattered — a rate limit weird enough to need this much
+// diagnosis (e.g. a Discord-documented-as-per-webhook limit that turns out
+// to be scoped to something else entirely) is exactly the case where an
+// unanticipated header or body field ends up being the useful one, and
+// there's no way to know which one that'll be in advance.
 async function parseRateLimitInfo(response) {
-  let retryAfterSeconds = null;
-  let global = false;
-  let message = null;
+  let rawBody = null;
+  let body = null;
   try {
-    const body = await response.json();
-    if (typeof body?.retry_after === "number") retryAfterSeconds = body.retry_after;
-    if (body?.global === true) global = true;
-    if (typeof body?.message === "string") message = body.message;
+    rawBody = await response.text();
+    body = JSON.parse(rawBody);
   } catch {
-    // Not JSON, already consumed, or no .json() at all — fall through to
-    // the header for the wait time; global/message stay at their defaults,
-    // since there's no header equivalent for either.
+    // Not JSON, empty, or (for a minimal test double with no .text() at
+    // all) unreadable this way — body/rawBody stay null; retryAfterSeconds
+    // below falls back to the header, then to a plain 1s guess.
   }
+
+  let retryAfterSeconds = typeof body?.retry_after === "number" ? body.retry_after : null;
   if (retryAfterSeconds === null) {
     const header = response.headers?.get?.("retry-after");
     const parsed = header ? Number(header) : NaN;
     retryAfterSeconds = Number.isFinite(parsed) ? parsed : 1;
   }
-  const scope = response.headers?.get?.("x-ratelimit-scope") ?? null;
-  const bucket = response.headers?.get?.("x-ratelimit-bucket") ?? null;
-  const limit = response.headers?.get?.("x-ratelimit-limit") ?? null;
-  const remaining = response.headers?.get?.("x-ratelimit-remaining") ?? null;
-  return { retryAfterSeconds, global, message, scope, bucket, limit, remaining };
+  const global = body?.global === true;
+
+  const headers = {};
+  if (response.headers?.forEach) {
+    response.headers.forEach((value, key) => {
+      headers[key] = value;
+    });
+  } else if (response.headers?.entries) {
+    for (const [key, value] of response.headers.entries()) headers[key] = value;
+  }
+
+  return { retryAfterSeconds, global, body, rawBody, headers };
 }
 
-// Renders only the fields that were actually present — most of these are
-// undocumented-for-webhooks and may not show up on every 429, so a fixed
-// template would print a wall of "null"s that bury the fields that matter.
-function describeRateLimit({ global, retryAfterSeconds, message, scope, bucket, limit, remaining }) {
-  const parts = [`global: ${global}`, `retry_after: ${retryAfterSeconds}s`];
-  if (scope) parts.push(`scope: ${scope}`);
-  if (bucket) parts.push(`bucket: ${bucket}`);
-  if (limit !== null) parts.push(`limit: ${limit}`);
-  if (remaining !== null) parts.push(`remaining: ${remaining}`);
-  if (message) parts.push(`message: "${message}"`);
-  return parts.join(", ");
+// Dumps the whole captured picture — the parsed body if it parsed, the raw
+// text if it didn't, and every header Discord sent back — rather than a
+// curated subset, so nothing potentially-useful gets silently discarded
+// before we even see it once.
+function describeRateLimit({ global, retryAfterSeconds, body, rawBody, headers }) {
+  const bodyPart = body ? JSON.stringify(body) : rawBody ? `<unparsed: ${rawBody}>` : "<empty>";
+  const headerPart = Object.entries(headers)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(", ");
+  return `global: ${global}, retry_after: ${retryAfterSeconds}s, body: ${bodyPart}${headerPart ? `, headers: [${headerPart}]` : ""}`;
 }
 
 // Shared by notifyLogin/notifyPublish below. Never throws — a broken or
