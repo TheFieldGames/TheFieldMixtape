@@ -50,22 +50,24 @@ Want to add a song? See [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 42. Pile - Demonstration - 03 animals
 43. Ransom - Juice Wrld
 44. Rascal King - MMBostones
-45. Semi-Charmed Life - Third Eye Blind
-46. Skeleton Cartier - Popcaan
-47. Spellbinder - Gabor Szabo
-48. Squabble Up - Kendrick Lamar
-49. Sugar, We're Goin Down - Fall Out Boy
-50. Super-Bon-Bon - Soul Coughing
-51. Tecata
-52. Teenage Dirtbag - Wheatus
-53. Temperature - Sean Paul
-54. Three Fisher Kings - Gabor Szabo
-55. Three is the Magic Number - De La Soul
-56. Touch the Sky - Kanye
-57. USA
-58. Valley Ghoul - Provoker
-59. Veridis Quo - Daft Punk
-60. Wagon Wheel - Darius Rucker
-61. Woke Up - Dae Dae
-62. You Can Call me Al - Paul Simon
+45. Rye's Theme - Fargo
+46. Semi-Charmed Life - Third Eye Blind
+47. Skeleton Cartier - Popcaan
+48. Spellbinder - Gabor Szabo
+49. Squabble Up - Kendrick Lamar
+50. Sugar, We're Goin Down - Fall Out Boy
+51. Super-Bon-Bon - Soul Coughing
+52. Tecata
+53. Teenage Dirtbag - Wheatus
+54. Temperature - Sean Paul
+55. Three Fisher Kings - Gabor Szabo
+56. Three is the Magic Number - De La Soul
+57. Touch the Sky - Kanye
+58. USA
+59. Valley Ghoul - Provoker
+60. Veridis Quo - Daft Punk
+61. Wagon Wheel - Darius Rucker
+62. Woke Up - Dae Dae
+63. Wrench and Numbers - Fargo
+64. You Can Call me Al - Paul Simon
 <!-- TRACKLIST:END -->
