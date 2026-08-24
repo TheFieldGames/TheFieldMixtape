@@ -36,25 +36,23 @@ Want to add a song? See [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 28. My Own Worst Enemy - Lit
 29. Nightcall - Kavinsky
 30. Not Like Us - Kendrick Lamar
-31. Ona Tanczy Dla Mnie - Weekend
-32. One More Time - Daft Punk
-33. One Week - Barenaked Ladies
-34. Pepper - Butthole Surfers
-35. Pile - Demonstration - 03 animals
-36. Ransom - Juice Wrld
-37. Rascal King - MMBostones
-38. Semi-Charmed Life - Third Eye Blind
-39. Skeleton Cartier - Popcaan
-40. Squabble Up - Kendrick Lamar
-41. Super-Bon-Bon - Soul Coughing
-42. Tecata
-43. Teenage Dirtbag - Wheatus
-44. Temperature - Sean Paul
-45. Three is the Magic Number - De La Soul
-46. Touch the Sky - Kanye
-47. USA
-48. Valley Ghoul - Provoker
-49. Veridis Quo - Daft Punk
-50. Woke Up - Dae Dae
-51. You Can Call me Al - Paul Simon
+31. One More Time - Daft Punk
+32. One Week - Barenaked Ladies
+33. Pepper - Butthole Surfers
+34. Pile - Demonstration - 03 animals
+35. Ransom - Juice Wrld
+36. Rascal King - MMBostones
+37. Semi-Charmed Life - Third Eye Blind
+38. Skeleton Cartier - Popcaan
+39. Squabble Up - Kendrick Lamar
+40. Super-Bon-Bon - Soul Coughing
+41. Tecata
+42. Teenage Dirtbag - Wheatus
+43. Three is the Magic Number - De La Soul
+44. Touch the Sky - Kanye
+45. USA
+46. Valley Ghoul - Provoker
+47. Veridis Quo - Daft Punk
+48. Woke Up - Dae Dae
+49. You Can Call me Al - Paul Simon
 <!-- TRACKLIST:END -->
