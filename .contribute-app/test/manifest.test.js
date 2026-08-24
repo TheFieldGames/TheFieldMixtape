@@ -7,6 +7,7 @@ import {
   recordTrackAdded,
   removeTrack,
   backfillLegacyTracks,
+  reconcileDeletedTracks,
   applyManualCorrections,
   queueTrackAdded,
   queueTrackDeletion,
@@ -191,6 +192,88 @@ test("backfillLegacyTracks starts from an empty manifest when nothing is stored 
   assert.deepEqual(updated.tracks["Only Track - Artist.ogg"], { addedBy: LEGACY_ADDED_BY, addedAt: null, status: "live" });
   assert.deepEqual(updated.pendingDeletes, []);
   assert.deepEqual(updated.publishLog, []);
+});
+
+// --- reconcileDeletedTracks: the delete-side counterpart to
+// backfillLegacyTracks, for the same "R2 mutates before a publish fully
+// succeeds" gap — see the doc comment in src/manifest.js ---
+
+function manifestFakeClient(initial, calls = []) {
+  let stored = initial;
+  return {
+    calls,
+    async send(command) {
+      if (command.constructor.name === "GetObjectCommand") {
+        return { Body: asyncIterableFromString(JSON.stringify(stored)) };
+      }
+      stored = JSON.parse(command.input.Body);
+      calls.push(["put", stored]);
+      return {};
+    },
+  };
+}
+
+test("reconcileDeletedTracks drops a pendingDeletes entry (and its manifest.tracks entry) whose R2 object is already gone", async () => {
+  const fakeClient = manifestFakeClient({
+    tracks: {
+      "Gone Already - Someone.ogg": { addedBy: "Rob", addedAt: "2026-08-20T00:00:00.000Z", status: "live" },
+      "Still Live - Someone Else.ogg": { addedBy: "Alex", addedAt: "2026-08-21T00:00:00.000Z", status: "live" },
+    },
+    pendingDeletes: ["Gone Already - Someone.ogg", "Still Live - Someone Else.ogg"],
+    publishLog: [],
+  });
+
+  // Only "Still Live - Someone Else" is still actually present in R2.
+  const updated = await reconcileDeletedTracks(fakeClient, "bucket", ["Still Live - Someone Else"], { log: () => {} });
+
+  assert.equal("Gone Already - Someone.ogg" in updated.tracks, false, "the manifest entry for the actually-gone track is removed entirely");
+  assert.deepEqual(updated.tracks["Still Live - Someone Else.ogg"], { addedBy: "Alex", addedAt: "2026-08-21T00:00:00.000Z", status: "live" });
+  assert.deepEqual(updated.pendingDeletes, ["Still Live - Someone Else.ogg"], "the still-live track stays correctly pending deletion");
+});
+
+test("reconcileDeletedTracks is a no-op (no write) when every pendingDeletes entry is still actually live in R2", async () => {
+  const calls = [];
+  const fakeClient = manifestFakeClient(
+    {
+      tracks: { "Still Live - Someone.ogg": { addedBy: "Alex", addedAt: null, status: "live" } },
+      pendingDeletes: ["Still Live - Someone.ogg"],
+      publishLog: [],
+    },
+    calls
+  );
+
+  await reconcileDeletedTracks(fakeClient, "bucket", ["Still Live - Someone"], { log: () => {} });
+
+  assert.equal(calls.length, 0, "no write happens when there's nothing stale to reconcile");
+});
+
+test("reconcileDeletedTracks logs every reconciled track by name", async () => {
+  const fakeClient = manifestFakeClient({
+    tracks: { "Gone - Someone.ogg": { addedBy: "Rob", addedAt: null, status: "live" } },
+    pendingDeletes: ["Gone - Someone.ogg"],
+    publishLog: [],
+  });
+  const logLines = [];
+
+  await reconcileDeletedTracks(fakeClient, "bucket", [], { log: (...args) => logLines.push(args.join(" ")) });
+
+  assert.equal(logLines.length, 1);
+  assert.match(logLines[0], /Gone - Someone/);
+});
+
+test("reconcileDeletedTracks never touches pendingAdds or other live tracks not involved in the stale deletion", async () => {
+  const fakeClient = manifestFakeClient({
+    tracks: {
+      "Gone - Someone.ogg": { addedBy: "Rob", addedAt: null, status: "live" },
+      "Untouched Pending - Someone.ogg": { addedBy: "Alex", addedAt: null, status: "pending" },
+    },
+    pendingDeletes: ["Gone - Someone.ogg"],
+    publishLog: [],
+  });
+
+  const updated = await reconcileDeletedTracks(fakeClient, "bucket", [], { log: () => {} });
+
+  assert.deepEqual(updated.tracks["Untouched Pending - Someone.ogg"], { addedBy: "Alex", addedAt: null, status: "pending" });
 });
 
 test("applyManualCorrections overwrites addedBy/addedAt for the given filenames in a single write, preserving status and untouched entries", async () => {

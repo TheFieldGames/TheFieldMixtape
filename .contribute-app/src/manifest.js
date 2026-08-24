@@ -121,6 +121,50 @@ export async function backfillLegacyTracks(client, bucket, trackNames, { now = n
   return updated;
 }
 
+/**
+ * Self-healing counterpart to backfillLegacyTracks, for the same
+ * "R2 mutates before a publish fully succeeds" gap — this time on the
+ * deletion side. A queued deletion's real R2 removal happens early in
+ * processPublish, unconditionally; the manifest entry (and its
+ * pendingDeletes flag) is only meant to clear once a publish *fully*
+ * succeeds (applyPublishBatch). If tcli-publish then fails, the manifest
+ * keeps listing an already-deleted track as "live" with a stale
+ * pending-delete flag indefinitely.
+ *
+ * Safe to prune here: what actually gets built and published is driven by
+ * R2's real listing (storage.listTracks()), not by this bookkeeping — a
+ * stale pendingDeletes entry doesn't cause a wrong build or a wrong
+ * display (loadQueueState's rows are already real-R2-listing-driven), it
+ * just means the manifest itself stays inconsistent, and every future
+ * publish attempt wastes a redundant (harmless, idempotent) delete call
+ * re-deleting something already gone. Not touching pendingAdds/live tracks
+ * at all — this must never interfere with a retry's ability to pick a
+ * still-incomplete publish attempt back up.
+ *
+ * `realTrackNames` should be storage.listTracks()'s output ("Title -
+ * Artist", no extension) — callers already have this on hand, so this
+ * doesn't do its own R2 listing call.
+ */
+export async function reconcileDeletedTracks(client, bucket, realTrackNames, { log = logDefault } = {}) {
+  const manifest = await getManifest(client, bucket);
+  const realSet = new Set(realTrackNames.map((name) => `${name}.ogg`));
+  const staleFilenames = manifest.pendingDeletes.filter((filename) => !realSet.has(filename));
+  if (staleFilenames.length === 0) return manifest;
+
+  log(`Reconciling ${staleFilenames.length} already-deleted track(s) still lingering in the manifest: ${staleFilenames.join(", ")}`);
+
+  const updatedTracks = { ...manifest.tracks };
+  for (const filename of staleFilenames) delete updatedTracks[filename];
+
+  const updated = {
+    ...manifest,
+    tracks: updatedTracks,
+    pendingDeletes: manifest.pendingDeletes.filter((filename) => !staleFilenames.includes(filename)),
+  };
+  await saveManifest(client, bucket, updated);
+  return updated;
+}
+
 /** Records a newly-queued track add. Unlike recordTrackAdded, this doesn't
  * mean the track is live yet — the real R2 object lives under
  * storage.PENDING_PREFIX until a Publish action promotes it. `addedAt`

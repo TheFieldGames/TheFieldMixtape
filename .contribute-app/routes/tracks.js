@@ -46,6 +46,12 @@ async function loadQueueState(config) {
     manifestData = await manifest.backfillLegacyTracks(config.r2Client, config.r2Bucket, trackNames);
   }
 
+  const realTrackKeys = new Set(trackNames.map((name) => `${name}.ogg`));
+  const staleDeletes = manifestData.pendingDeletes.some((filename) => !realTrackKeys.has(filename));
+  if (staleDeletes) {
+    manifestData = await manifest.reconcileDeletedTracks(config.r2Client, config.r2Bucket, trackNames);
+  }
+
   const pendingDeleteSet = new Set(manifestData.pendingDeletes);
 
   // Every currently-live track, including ones marked for removal — those
