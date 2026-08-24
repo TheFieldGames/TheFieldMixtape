@@ -48,7 +48,14 @@ export const SOURCE_BRANCH = "main";
 // immediately before the real publish call, as a final safety net against
 // the (currently narrow, e.g. manual out-of-band R2 changes) possibility
 // that the count changed between the first check and now.
-export const MAX_TRACKS = 70;
+//
+// Lowered from 70 to 50 on 2026-08-24 as a partial mitigation for tcli
+// OOM-crashing on Render's 512MB container while uploading the built
+// package (see MixTapeWebPlan.md) — a smaller cap keeps the package
+// smaller on average, but this alone doesn't reliably fix the crash (a
+// 58-track/249MB package still OOM'd); the real fix is more memory
+// headroom or moving the upload off Render entirely.
+export const MAX_TRACKS = 50;
 
 // Hard cap on a single converted .ogg file's size — checked at queue time
 // (routes/index.js), right after conversion, before it's ever uploaded to

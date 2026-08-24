@@ -128,7 +128,7 @@ test("queueTrackAdd rejects when projected live+pending count would exceed MAX_T
 
   await assert.rejects(
     () => queueTrackAdd({ uploadPath, title: "T", artist: "A", displayName: "Alex" }, BASE_CONFIG, { ...deps, tmpBase: tmpDir }),
-    /over the 70-track limit/
+    /over the 50-track limit/
   );
 });
 

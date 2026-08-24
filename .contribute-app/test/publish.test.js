@@ -301,7 +301,7 @@ test("refuses to run when the projected track count would exceed MAX_TRACKS, bef
 
   await assert.rejects(
     () => processPublish({ displayName: "Rob" }, BASE_CONFIG, { ...deps, tmpBase: tmpDir }),
-    /over the 70-track limit/
+    /over the 50-track limit/
   );
 
   assert.ok(!calls.some((c) => c[0] === "cloneRepo"));
@@ -512,7 +512,7 @@ test("re-checks the track limit immediately before the real publish call, as a f
     () => processPublish({ displayName: "Rob" }, BASE_CONFIG, { ...deps, tmpBase: tmpDir }),
     (err) => {
       assert.ok(err instanceof SubmissionError);
-      assert.match(err.message, /exceeds the 70-track limit right before publish/);
+      assert.match(err.message, /exceeds the 50-track limit right before publish/);
       // This fires after push-branch/push-tag already succeeded.
       assert.equal(err.committedButNotPublished, true);
       return true;
