@@ -10,66 +10,58 @@ Want to add a song? See [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 2. All Along the Watchtower - Jimmy Hendrix
 3. Because I'm Me - The Avalanches
 4. Break Stuff - Limp Bizkit
-5. Bridge - Amon Tobin
-6. Bugle Call Rag - Buddy Rich
-7. Bust a Move - Young MC
-8. Can't Punk Me - JID
-9. DARE - Gorillaz
-10. Dear Maria, Count Me In - All Time Low
-11. Don't Stop Me Now - Queen
-12. Don't Wait Up - Midnight Generation
-13. Dreaming - Wolf Parade
-14. Electric Feel (Justice Remix) - MGMT, Justice
-15. Ella Baila
-16. Everywhere - Fleetwood Mac
-17. Fly - Sugar Gay
-18. Freaks - Timmy Trumpet
-19. Genesis - Justice
-20. Get Busy - Sean Paul
-21. Get Up Offa That Thing - James Brown
-22. Gypsy Queen - Gabor Szabo
-23. Hamster Dance
-24. Helena - My Chemical Romance
-25. Hooked on a Feeling
-26. If I Was a Folkstar - The Avalanches
-27. In Da Club - 50 Cent
-28. In the End - Linkin Park
-29. In Too Deep - Sum 41
-30. Jump in Line
-31. King Kunta - Kendrick Lamar
-32. Lifestyle - Rich Gang
-33. Little Bitty Pretty One
-34. LUMP - Presidents of the United States
-35. Movin' To The Sun - HUGEL
-36. My Own Worst Enemy - Lit
-37. Nightcall - Kavinsky
-38. Not Like Us - Kendrick Lamar
-39. Ocean Avenue - Yellowcard
-40. Ona Tanczy Dla Mnie - Weekend
-41. One More Time - Daft Punk
-42. One Week - Barenaked Ladies
-43. Pepper - Butthole Surfers
-44. Pile - Demonstration - 03 animals
-45. Ransom - Juice Wrld
-46. Rascal King - MMBostones
-47. Rye's Theme - Fargo
-48. Semi-Charmed Life - Third Eye Blind
-49. Skeleton Cartier - Popcaan
-50. Spellbinder - Gabor Szabo
-51. Squabble Up - Kendrick Lamar
-52. Sugar, We're Goin Down - Fall Out Boy
-53. Super-Bon-Bon - Soul Coughing
-54. Tecata
-55. Teenage Dirtbag - Wheatus
-56. Temperature - Sean Paul
-57. Three Fisher Kings - Gabor Szabo
-58. Three is the Magic Number - De La Soul
-59. Touch the Sky - Kanye
-60. USA
-61. Valley Ghoul - Provoker
-62. Veridis Quo - Daft Punk
-63. Wagon Wheel - Darius Rucker
-64. Woke Up - Dae Dae
-65. Wrench and Numbers - Fargo
-66. You Can Call me Al - Paul Simon
+5. Bust a Move - Young MC
+6. Can't Punk Me - JID
+7. DARE - Gorillaz
+8. Don't Stop Me Now - Queen
+9. Dreaming - Wolf Parade
+10. Ella Baila
+11. Everywhere - Fleetwood Mac
+12. Fly - Sugar Gay
+13. Freaks - Timmy Trumpet
+14. Genesis - Justice
+15. Get Busy - Sean Paul
+16. Get Up Offa That Thing - James Brown
+17. Gypsy Queen - Gabor Szabo
+18. Hamster Dance
+19. Helena - My Chemical Romance
+20. Hooked on a Feeling
+21. If I Was a Folkstar - The Avalanches
+22. In Da Club - 50 Cent
+23. In the End - Linkin Park
+24. In Too Deep - Sum 41
+25. Jump in Line
+26. King Kunta - Kendrick Lamar
+27. Lifestyle - Rich Gang
+28. Little Bitty Pretty One
+29. LUMP - Presidents of the United States
+30. Movin' To The Sun - HUGEL
+31. My Own Worst Enemy - Lit
+32. Nightcall - Kavinsky
+33. Not Like Us - Kendrick Lamar
+34. Ona Tanczy Dla Mnie - Weekend
+35. One More Time - Daft Punk
+36. One Week - Barenaked Ladies
+37. Pepper - Butthole Surfers
+38. Pile - Demonstration - 03 animals
+39. Ransom - Juice Wrld
+40. Rascal King - MMBostones
+41. Rye's Theme - Fargo
+42. Semi-Charmed Life - Third Eye Blind
+43. Skeleton Cartier - Popcaan
+44. Spellbinder - Gabor Szabo
+45. Squabble Up - Kendrick Lamar
+46. Super-Bon-Bon - Soul Coughing
+47. Tecata
+48. Teenage Dirtbag - Wheatus
+49. Temperature - Sean Paul
+50. Three Fisher Kings - Gabor Szabo
+51. Three is the Magic Number - De La Soul
+52. Touch the Sky - Kanye
+53. USA
+54. Valley Ghoul - Provoker
+55. Veridis Quo - Daft Punk
+56. Woke Up - Dae Dae
+57. Wrench and Numbers - Fargo
+58. You Can Call me Al - Paul Simon
 <!-- TRACKLIST:END -->
