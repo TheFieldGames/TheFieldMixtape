@@ -224,39 +224,109 @@ test("deleteTrack respects a dry-run prefix override, keeping it out of the real
   assert.equal(sentCommand.input.Key, "dry-run/Old Track - Someone.ogg");
 });
 
-test("promotePendingTrack copies from the pending prefix to the real prefix, then deletes the pending copy", async () => {
-  const commands = [];
-  const fakeClient = {
+// promotePendingTrack always checks the real prefix first (a HeadObjectCommand,
+// via trackExists) — a 404 there means "not yet promoted," so these fakes
+// throw a 404-shaped error for the Head check and succeed for everything
+// else, to exercise the normal (not-yet-promoted) path.
+function notYetPromotedClient(commands) {
+  return {
     async send(command) {
       commands.push(command);
+      if (command.constructor.name === "HeadObjectCommand") {
+        const err = new Error("not found");
+        err.$metadata = { httpStatusCode: 404 };
+        throw err;
+      }
       return {};
     },
   };
+}
+
+test("promotePendingTrack copies from the pending prefix to the real prefix, then deletes the pending copy", async () => {
+  const commands = [];
+  const fakeClient = notYetPromotedClient(commands);
 
   await promotePendingTrack(fakeClient, "test-bucket", "New Track - Someone.ogg");
 
-  assert.equal(commands.length, 2);
-  assert.equal(commands[0].constructor.name, "CopyObjectCommand");
-  assert.equal(commands[0].input.Bucket, "test-bucket");
-  assert.equal(commands[0].input.Key, "my mixtape/New Track - Someone.ogg");
-  assert.equal(commands[0].input.CopySource, "test-bucket/pending/New%20Track%20-%20Someone.ogg");
-  assert.equal(commands[1].constructor.name, "DeleteObjectCommand");
-  assert.equal(commands[1].input.Key, "pending/New Track - Someone.ogg");
+  assert.equal(commands.length, 3);
+  assert.equal(commands[0].constructor.name, "HeadObjectCommand");
+  assert.equal(commands[1].constructor.name, "CopyObjectCommand");
+  assert.equal(commands[1].input.Bucket, "test-bucket");
+  assert.equal(commands[1].input.Key, "my mixtape/New Track - Someone.ogg");
+  assert.equal(commands[1].input.CopySource, "test-bucket/pending/New%20Track%20-%20Someone.ogg");
+  assert.equal(commands[2].constructor.name, "DeleteObjectCommand");
+  assert.equal(commands[2].input.Key, "pending/New Track - Someone.ogg");
 });
 
 test("promotePendingTrack correctly encodes filenames with parentheses/commas in CopySource without corrupting the pending/ prefix", async () => {
   const commands = [];
+  const fakeClient = notYetPromotedClient(commands);
+
+  await promotePendingTrack(fakeClient, "test-bucket", "Bangarang (Ft. Sirah), Pt. 2.ogg");
+
+  const copyCommand = commands.find((c) => c.constructor.name === "CopyObjectCommand");
+  assert.equal(copyCommand.input.CopySource, "test-bucket/pending/Bangarang%20(Ft.%20Sirah)%2C%20Pt.%202.ogg");
+  assert.ok(!copyCommand.input.CopySource.includes("%2Fpending"), "the pending/ prefix's slash must stay a literal slash, not get encoded");
+});
+
+// --- Idempotent retry behavior (the "committed but not published" fix —
+// see the doc comment on promotePendingTrack in src/storage.js) ---
+
+test("promotePendingTrack skips the copy entirely when the track is already live (a prior attempt already promoted it)", async () => {
+  const commands = [];
   const fakeClient = {
     async send(command) {
       commands.push(command);
+      return {}; // HeadObjectCommand succeeds -> already promoted
+    },
+  };
+
+  await promotePendingTrack(fakeClient, "test-bucket", "Already Live - Someone.ogg");
+
+  assert.equal(
+    commands.filter((c) => c.constructor.name === "CopyObjectCommand").length,
+    0,
+    "no copy should be attempted once the destination already exists"
+  );
+  assert.ok(commands.some((c) => c.constructor.name === "DeleteObjectCommand"), "still attempts to clean up the pending copy");
+});
+
+test("promotePendingTrack tolerates the pending copy already being gone (deleted by a prior attempt) without throwing", async () => {
+  const fakeClient = {
+    async send(command) {
+      if (command.constructor.name === "HeadObjectCommand") {
+        const err = new Error("not found");
+        err.$metadata = { httpStatusCode: 404 };
+        throw err; // not yet promoted -> copy still needs to happen
+      }
+      if (command.constructor.name === "DeleteObjectCommand") {
+        const err = new Error("The specified key does not exist.");
+        err.name = "NoSuchKey";
+        throw err; // pending copy already gone from a prior attempt
+      }
       return {};
     },
   };
 
-  await promotePendingTrack(fakeClient, "test-bucket", "Bangarang (Ft. Sirah), Pt. 2.ogg");
+  await assert.doesNotReject(promotePendingTrack(fakeClient, "test-bucket", "Track - Someone.ogg"));
+});
 
-  assert.equal(commands[0].input.CopySource, "test-bucket/pending/Bangarang%20(Ft.%20Sirah)%2C%20Pt.%202.ogg");
-  assert.ok(!commands[0].input.CopySource.includes("%2Fpending"), "the pending/ prefix's slash must stay a literal slash, not get encoded");
+test("promotePendingTrack still surfaces a genuine, unexpected delete failure", async () => {
+  const fakeClient = {
+    async send(command) {
+      if (command.constructor.name === "HeadObjectCommand") {
+        const err = new Error("not found");
+        err.$metadata = { httpStatusCode: 404 };
+        throw err;
+      }
+      if (command.constructor.name === "DeleteObjectCommand") {
+        throw new Error("permission denied");
+      }
+      return {};
+    },
+  };
+
+  await assert.rejects(promotePendingTrack(fakeClient, "test-bucket", "Track - Someone.ogg"), /permission denied/);
 });
 
 test("downloadTrackTo writes the real object bytes to an exact local path", async (t) => {

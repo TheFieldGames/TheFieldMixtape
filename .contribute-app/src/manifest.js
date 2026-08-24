@@ -1,4 +1,5 @@
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { log as logDefault } from "./logger.js";
 
 // Bucket-root key (not under storage.TRACK_PREFIX), so it's structurally
 // invisible to listTracks()/downloadAllTracks() — same pattern as
@@ -88,10 +89,21 @@ export async function removeTrack(client, bucket, filename) {
  * ("Title - Artist", no extension) — converted to filenames here since
  * that's the manifest's key shape (matches storage.keyForFilename's target).
  */
-export async function backfillLegacyTracks(client, bucket, trackNames, { now = new Date() } = {}) {
+export async function backfillLegacyTracks(client, bucket, trackNames, { now = new Date() } = {}, { log = logDefault } = {}) {
   const manifest = await getManifest(client, bucket);
   const missing = trackNames.filter((name) => !(`${name}.ogg` in manifest.tracks));
   if (missing.length === 0) return manifest;
+
+  // Legitimate on this app's very first runs (genuinely pre-manifest
+  // tracks) — but it's also exactly the mechanism that silently masked a
+  // real bug once: a track promoted to the live R2 prefix by a failed
+  // Publish attempt, then orphaned by a "cancel" action that removed its
+  // manifest entry without checking where the file actually was (see
+  // queueTrackDelete's fix in queueActions.js). Logging every occurrence
+  // loudly, by name, means that never disappears into the noise silently
+  // again — an unexpected backfill of recently-known track names is the
+  // signal something upstream went wrong.
+  log(`Backfilling ${missing.length} track(s) missing from the manifest as legacy/live: ${missing.join(", ")}`);
 
   const updated = {
     ...manifest,

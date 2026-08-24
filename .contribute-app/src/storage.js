@@ -116,18 +116,40 @@ export async function deleteTrack(client, bucket, filename, { prefix = TRACK_PRE
  * S3's CopySource must be `<bucket>/<url-encoded key>`, but a naive
  * encodeURIComponent also escapes the "/" inside PENDING_PREFIX itself,
  * corrupting the path — so only the filename portion is encoded.
+ *
+ * Idempotent by design, because it has to be: real R2 mutation happens
+ * *before* git/tcli in a Publish, specifically so a later failure (e.g.
+ * tcli-publish, which can genuinely fail independent of anything this app
+ * controls) is recoverable — "committed but not published." But a prior
+ * attempt at the exact same batch may have already promoted this exact
+ * track and then failed downstream. A naive unconditional copy on retry
+ * would try to copy a pending key that's already been deleted, failing
+ * with "the specified key does not exist" even though the track is
+ * already correctly live — turning a recoverable failure into an
+ * unrecoverable one. Checking the destination first instead of blindly
+ * copying makes retrying always safe.
  */
 export async function promotePendingTrack(client, bucket, filename) {
   const sourceKey = keyForFilename(filename, PENDING_PREFIX);
   const destKey = keyForFilename(filename, TRACK_PREFIX);
-  await client.send(
-    new CopyObjectCommand({
-      Bucket: bucket,
-      CopySource: `${bucket}/${PENDING_PREFIX}${encodeURIComponent(filename)}`,
-      Key: destKey,
-    })
-  );
-  await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: sourceKey }));
+  const alreadyPromoted = await trackExists(client, bucket, filename, { prefix: TRACK_PREFIX });
+  if (!alreadyPromoted) {
+    await client.send(
+      new CopyObjectCommand({
+        Bucket: bucket,
+        CopySource: `${bucket}/${PENDING_PREFIX}${encodeURIComponent(filename)}`,
+        Key: destKey,
+      })
+    );
+  }
+  // Delete the pending copy regardless of which branch ran above —
+  // tolerate it already being gone, for the same "already promoted by a
+  // prior attempt" reason.
+  try {
+    await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: sourceKey }));
+  } catch (err) {
+    if (err?.$metadata?.httpStatusCode !== 404 && err?.name !== "NotFound" && err?.name !== "NoSuchKey") throw err;
+  }
 }
 
 export async function uploadTrack(client, bucket, filename, filePath, { prefix = TRACK_PREFIX } = {}) {

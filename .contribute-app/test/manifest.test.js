@@ -118,6 +118,46 @@ test("backfillLegacyTracks adds LEGACY_ADDED_BY entries only for tracks missing 
   assert.equal(calls.length, 1, "writes exactly once for the whole batch");
 });
 
+// A silent backfill is exactly the mechanism that once masked a real bug:
+// a track promoted to the real R2 prefix by a failed Publish attempt, then
+// orphaned by a "cancel" action that removed its manifest entry (see
+// queueTrackDelete's fix in src/queueActions.js). Logging every occurrence
+// by name means that can't disappear into the noise silently again.
+test("backfillLegacyTracks logs every backfilled track by name", async () => {
+  const fakeClient = {
+    async send(command) {
+      if (command.constructor.name === "GetObjectCommand") {
+        return { Body: asyncIterableFromString(JSON.stringify({ tracks: {}, pendingDeletes: [], publishLog: [] })) };
+      }
+      return {};
+    },
+  };
+  const logLines = [];
+
+  await backfillLegacyTracks(fakeClient, "bucket", ["Mystery One - Someone", "Mystery Two - Someone Else"], {}, { log: (...args) => logLines.push(args.join(" ")) });
+
+  assert.equal(logLines.length, 1);
+  assert.match(logLines[0], /Mystery One - Someone/);
+  assert.match(logLines[0], /Mystery Two - Someone Else/);
+});
+
+test("backfillLegacyTracks logs nothing when there's nothing to backfill", async () => {
+  const fakeClient = {
+    async send() {
+      return {
+        Body: asyncIterableFromString(
+          JSON.stringify({ tracks: { "Known - Artist.ogg": { addedBy: "Alex", addedAt: null, status: "live" } }, pendingDeletes: [], publishLog: [] })
+        ),
+      };
+    },
+  };
+  const logLines = [];
+
+  await backfillLegacyTracks(fakeClient, "bucket", ["Known - Artist"], {}, { log: (...args) => logLines.push(args.join(" ")) });
+
+  assert.equal(logLines.length, 0);
+});
+
 test("backfillLegacyTracks is a no-op (no write) when every track already has a manifest entry", async () => {
   let putCalled = false;
   const fakeClient = {

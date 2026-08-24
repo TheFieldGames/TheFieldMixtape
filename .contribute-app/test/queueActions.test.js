@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { queueTrackAdd, queueTrackDelete, cancelQueuedDeletion } from "../src/queueActions.js";
 import { SubmissionError, MAX_TRACKS, MAX_TRACK_FILE_SIZE_BYTES } from "../src/publish.js";
-import { PENDING_PREFIX } from "../src/storage.js";
+import { PENDING_PREFIX, TRACK_PREFIX } from "../src/storage.js";
 
 const BASE_CONFIG = { r2Client: {}, r2Bucket: "thefieldmixtape-audio" };
 
@@ -183,8 +183,18 @@ test("queueTrackDelete on a still-pending track cancels it outright (removes the
   const result = await queueTrackDelete({ filename: "New - Track.ogg", displayName: "Rob" }, BASE_CONFIG, deps);
 
   assert.equal(result.action, "cancelled-pending-add");
-  const deleteCall = calls.find((c) => c[0] === "deleteTrack");
-  assert.deepEqual(deleteCall, ["deleteTrack", "New - Track.ogg", PENDING_PREFIX]);
+  // Deletes from BOTH the pending prefix and the real prefix, unconditionally
+  // — not just the pending one. An earlier failed Publish attempt may have
+  // already promoted this exact track to the real prefix before dying at a
+  // later stage (tcli-publish can fail independent of anything this app
+  // controls), leaving the manifest still saying "pending." A delete against
+  // a key that doesn't exist doesn't error (S3/R2 delete is idempotent), so
+  // deleting from both locations is always safe and guarantees a cancel can
+  // never orphan an already-promoted live copy with no manifest record.
+  const deleteCalls = calls.filter((c) => c[0] === "deleteTrack");
+  assert.equal(deleteCalls.length, 2);
+  assert.ok(deleteCalls.some((c) => c[1] === "New - Track.ogg" && c[2] === PENDING_PREFIX));
+  assert.ok(deleteCalls.some((c) => c[1] === "New - Track.ogg" && c[2] === TRACK_PREFIX));
   assert.ok(calls.some((c) => c[0] === "manifest.removeTrack"));
   assert.ok(!calls.some((c) => c[0] === "manifest.queueTrackDeletion"));
 });

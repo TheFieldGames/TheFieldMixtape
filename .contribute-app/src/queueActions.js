@@ -4,7 +4,7 @@ import os from "node:os";
 import crypto from "node:crypto";
 
 import { buildTrackFilename } from "./filename.js";
-import { PENDING_PREFIX } from "./storage.js";
+import { PENDING_PREFIX, TRACK_PREFIX } from "./storage.js";
 import * as storageDefault from "./storage.js";
 import { convertToOgg as convertToOggDefault } from "./convert.js";
 import * as manifestDefault from "./manifest.js";
@@ -94,7 +94,19 @@ export async function queueTrackDelete(input, config, deps = {}) {
   const entry = manifestData.tracks[filename];
 
   if (entry?.status === "pending") {
+    // The R2 object should be sitting in the pending prefix — the normal
+    // case — but it may already have been promoted to the real prefix if
+    // an earlier Publish attempt got that far and then failed downstream
+    // (tcli-publish can fail independent of anything this app controls),
+    // leaving the manifest still saying "pending" even though the bytes
+    // already moved. A delete against a key that doesn't exist doesn't
+    // error (S3/R2 delete is idempotent — it just no-ops), so deleting
+    // from *both* prefixes unconditionally is always safe and guarantees
+    // cancelling a pending add can never leave an orphaned live copy
+    // behind with no manifest record, regardless of which prefix the
+    // bytes actually ended up in.
     await storage.deleteTrack(r2Client, r2Bucket, filename, { prefix: PENDING_PREFIX });
+    await storage.deleteTrack(r2Client, r2Bucket, filename, { prefix: TRACK_PREFIX });
     await manifest.removeTrack(r2Client, r2Bucket, filename);
     log(`Cancelled pending add: "${filename}" by ${displayName}`);
     return { filename, action: "cancelled-pending-add" };
