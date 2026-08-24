@@ -64,6 +64,59 @@ test("addAndCommit never collects or fabricates a real email address for the sub
   assert.ok(commitArgs.some((a) => a === `user.email=${COMMIT_EMAIL}`));
 });
 
+// --- "nothing to commit" retry-safety (the fix for a stuck "committed but
+// not published" Publish attempt whose README was already committed by an
+// earlier try at the exact same batch — see the doc comment on
+// addAndCommit in src/git.js) ---
+
+test("addAndCommit does not throw when git commit fails with 'nothing to commit' (the regenerated content already matches HEAD)", async () => {
+  const exec = async (bin, args) => {
+    if (args.includes("commit")) {
+      const err = new Error("Command failed");
+      err.stdout = "On branch main\nnothing to commit, working tree clean\n";
+      err.stderr = "";
+      throw err;
+    }
+    return { stdout: "", stderr: "" };
+  };
+
+  await assert.doesNotReject(
+    addAndCommit("/tmp/clone", ["README.md"], { authorName: "Rob", message: "msg" }, { runExecFile: exec })
+  );
+});
+
+test("addAndCommit still throws for a genuine commit failure unrelated to 'nothing to commit', surfacing the real git output", async () => {
+  const exec = async (bin, args) => {
+    if (args.includes("commit")) {
+      const err = new Error("Command failed");
+      err.stdout = "";
+      err.stderr = "fatal: unable to write new index file\n";
+      throw err;
+    }
+    return { stdout: "", stderr: "" };
+  };
+
+  await assert.rejects(
+    addAndCommit("/tmp/clone", ["README.md"], { authorName: "Rob", message: "msg" }, { runExecFile: exec }),
+    /unable to write new index file/
+  );
+});
+
+test("addAndCommit falls back to the bare error message when a genuine failure has no stdout/stderr at all", async () => {
+  const exec = async (bin, args) => {
+    if (args.includes("commit")) {
+      const err = new Error("Command failed: git commit -m ...");
+      throw err;
+    }
+    return { stdout: "", stderr: "" };
+  };
+
+  await assert.rejects(
+    addAndCommit("/tmp/clone", ["README.md"], { authorName: "Rob", message: "msg" }, { runExecFile: exec }),
+    /Command failed/
+  );
+});
+
 test("tagCommit tags HEAD with the given name", async () => {
   const calls = [];
   await tagCommit("/tmp/clone", "v1.0.12", { runExecFile: recordingExecFile(calls) });
