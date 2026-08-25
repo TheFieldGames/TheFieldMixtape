@@ -71,7 +71,6 @@ export function createJobsRouter() {
       return res.status(404).render("result", {
         success: false,
         error: "This job's result is no longer available (it may have expired) — try again.",
-        committedButNotPublished: false,
         dryRun: false,
         thunderstoreUrl: THUNDERSTORE_URL,
       });
@@ -84,19 +83,24 @@ export function createJobsRouter() {
     }
 
     if (job.status === "succeeded") {
+      // job.result.bookkeepingError (real publishes only) means Thunderstore
+      // genuinely received the update but something afterward (R2/git/the
+      // manifest) failed to record it — still a real success, just an
+      // imperfect one. See processPublish's doc comment in src/publish.js.
       return res.render("result", {
         success: true,
         error: null,
-        committedButNotPublished: false,
         ...job.result,
       });
     }
 
-    // "failed" or "cancelled"
+    // "failed" or "cancelled" — with the redesigned publish pipeline
+    // (tcli-publish is the actual point of no return, everything permanent
+    // happens after it succeeds), a failure here always means genuinely
+    // nothing changed: no git push, no R2 mutation. Nothing left to clean up.
     res.status(job.status === "cancelled" ? 200 : 500).render("result", {
       success: false,
       error: job.error?.message || "Something went wrong.",
-      committedButNotPublished: job.error?.committedButNotPublished || false,
       dryRun: job.dryRun,
       thunderstoreUrl: THUNDERSTORE_URL,
     });

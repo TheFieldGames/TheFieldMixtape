@@ -95,21 +95,12 @@ test("completeJob sets status to succeeded, stores the result, and broadcasts a 
   assert.deepEqual(events[events.length - 1], { type: "done", status: "succeeded", result: { versionNumber: "1.0.14" } });
 });
 
-test("failJob sets status to failed and records the error message + committedButNotPublished flag", () => {
+test("failJob sets status to failed and records the error message", () => {
   const id = createJob("delete");
   failJob(id, new Error("tcli build failed"));
   const job = getJob(id);
   assert.equal(job.status, "failed");
   assert.equal(job.error.message, "tcli build failed");
-  assert.equal(job.error.committedButNotPublished, false);
-});
-
-test("failJob preserves committedButNotPublished from a SubmissionError-shaped error", () => {
-  const id = createJob("delete");
-  const err = new Error("publish failed");
-  err.committedButNotPublished = true;
-  failJob(id, err);
-  assert.equal(getJob(id).error.committedButNotPublished, true);
 });
 
 test("failJob with a cancelled-flagged error sets status to cancelled, not failed", () => {

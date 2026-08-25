@@ -65,26 +65,28 @@ export const MAX_TRACK_FILE_SIZE_KB = 8000;
 export const MAX_TRACK_FILE_SIZE_BYTES = MAX_TRACK_FILE_SIZE_KB * 1024;
 
 export class SubmissionError extends Error {
-  constructor(message, { stage, committedButNotPublished = false, cancelled = false } = {}) {
+  constructor(message, { stage, cancelled = false } = {}) {
     super(message);
     this.name = "SubmissionError";
     this.stage = stage;
-    this.committedButNotPublished = committedButNotPublished;
     this.cancelled = cancelled;
   }
 }
 
 // Cancellation is only ever checked (and only ever takes effect) for stages
-// BEFORE this one. Matches jobs.js's own CANCEL_CUTOFF_STAGE and, more
-// importantly, matches the point where processPublish's own inner try block
-// begins treating a failure as committedButNotPublished rather than a clean
-// abort — once git has actually been pushed, "cancel" stops being a safe,
-// well-defined action (see MixTapeWebPlan.md's loading-bar design
-// discussion for the full reasoning: a real tcli-publish is a single
-// irreversible network call, and killing it mid-flight risks reporting
-// "cancelled" while Thunderstore actually went live — worse than an honest
-// failure).
-export const CANCEL_CUTOFF_STAGE = "push-branch";
+// BEFORE this one. Matches jobs.js's own CANCEL_CUTOFF_STAGE. tcli-publish
+// is the one genuinely irreversible step in the whole pipeline (Thunderstore
+// versions are immutable once accepted) — everything before it (clone,
+// README regen, local commit/tag, download, build) only ever touches a
+// temp local clone and R2's read-only listing, never anything permanent, so
+// cancelling up through there is always safe. Everything after it (R2
+// promotion/deletion, git push, manifest update) must never be cancelled
+// either — once Thunderstore has genuinely received the upload, killing the
+// bookkeeping that follows would leave it live while local state stays
+// stale, which is exactly the "looks like it didn't happen when it did"
+// problem this whole ordering exists to prevent (see MixTapeWebPlan.md's
+// "publish tcli-publish first" redesign).
+export const CANCEL_CUTOFF_STAGE = "tcli-publish";
 
 function trackNameFromFilename(filename) {
   return filename.endsWith(".ogg") ? filename.slice(0, -".ogg".length) : filename;
@@ -92,34 +94,43 @@ function trackNameFromFilename(filename) {
 
 /**
  * Core orchestration for publishing everything currently queued in the
- * manifest: clone -> apply the batch to R2 (promote pending adds, delete
- * pending deletes) -> regenerate README from the resulting real listing ->
- * commit -> compute+tag version -> push branch -> push tag -> download full
- * library from R2 -> tcli publish -> flip the manifest's pending entries to
- * live / drop the deleted ones. This is the only function that ever
- * actually touches git/Thunderstore for real — queueing an add or a delete
- * (routes/index.js, routes/tracks.js) only ever mutates R2's pending prefix
- * and the manifest, never git or tcli, so it's fast and has no publish-
- * pipeline guards of its own to worry about.
+ * manifest. This is the only function that ever actually touches
+ * git/Thunderstore for real — queueing an add or a delete (routes/index.js,
+ * routes/tracks.js) only ever mutates R2's pending prefix and the manifest,
+ * never git or tcli, so it's fast and has no publish-pipeline guards of its
+ * own to worry about.
  *
  * Reads the pending set fresh from the manifest at the start (not passed in
  * by the caller) so it always reflects whatever's actually queued at the
  * moment Publish is clicked, not a possibly-stale snapshot.
  *
- * Real application of the batch to R2 happens early (right after clone,
- * before the branch/tag/build/publish critical section) — same position
- * processSubmission's R2 upload and processDeletion's R2 delete used to
- * occupy — so a later failure lands in the same recoverable "committed but
- * not published" partial-failure category (see MixTapeWebPlan.md's
- * "Auto-Deploy killed the first real submission" incident for the
- * precedent). Because Thunderstore versions are immutable already-built
- * zips, applying the batch to R2 never retroactively breaks an
- * already-published version — it only affects the *next* build.
+ * ORDERING (redesigned 2026-08-25 — see MixTapeWebPlan.md for the incident
+ * this replaces): everything up through tcli-build is now identical for a
+ * dry run and a real publish, and touches nothing permanent — clone,
+ * README regeneration, and the local git commit/tag all operate on either
+ * a temp local clone (never pushed) or an in-memory projection of the
+ * resulting track list (real R2 is only ever *read*, via listTracks(), not
+ * mutated). Pending adds are downloaded straight from R2's pending prefix
+ * for the build, exactly like a dry run always did — real R2 is never
+ * touched before this point for either path.
  *
- * A dry run never mutates real R2 at all: the resulting track list is
- * computed in-memory instead, and pending adds' real bytes are downloaded
- * from the pending prefix (not promoted) purely to build an accurate local
- * preview package.
+ * A dry run stops right there: it still pushes its own disposable,
+ * force-pushed branch/tag (so a real diff is inspectable) but never calls
+ * tcli publish and never touches real R2 or the manifest.
+ *
+ * A real publish's actual point of no return is tcli-publish itself —
+ * Thunderstore versions are immutable once accepted, and it's a single
+ * network call we don't control the internals of. Everything that used to
+ * happen *before* the old pipeline's publish step (R2 promotion/deletion,
+ * git push) now happens *after* tcli-publish succeeds instead. This means
+ * a failed tcli-publish leaves genuinely nothing changed — no orphaned R2
+ * state, no stale README on a real branch, no manifest drift, nothing to
+ * clean up before retrying. The old "committed but not published"
+ * partial-failure category is gone; what replaces it is much narrower and
+ * much safer: if something fails *after* tcli-publish already succeeded
+ * (promoting R2, pushing git, updating the manifest), Thunderstore already
+ * has the update regardless — only this app's own bookkeeping might lag
+ * behind reality, never the other way around.
  */
 export async function processPublish(input, config, deps = {}) {
   const {
@@ -232,92 +243,96 @@ export async function processPublish(input, config, deps = {}) {
     setStage("clone");
     await git.cloneRepo(repoUrl, SOURCE_BRANCH, cloneDir);
 
-    // Real application of the batch happens here, before the critical
-    // section below — see the function doc comment for why this
-    // positioning is safe. A dry run never calls these at all.
-    if (!dryRun) {
-      setStage("apply-queue");
-      for (const filename of pendingDeleteFilenames) {
-        await storage.deleteTrack(r2Client, r2Bucket, filename);
-      }
-      for (const filename of pendingAddFilenames) {
-        await storage.promotePendingTrack(r2Client, r2Bucket, filename);
-      }
-    }
-
-    setStage("regenerate-readme");
-    const realTrackNames = await storage.listTracks(r2Client, r2Bucket);
-    // Real: R2 was just mutated above, so listTracks() already reflects the
-    // final state exactly. Dry run: R2 was never touched, so the resulting
-    // list is computed here in-memory instead — a preview only.
-    const trackNames = dryRun
-      ? [
-          ...realTrackNames.filter((name) => !pendingDeleteFilenames.includes(`${name}.ogg`)),
-          ...pendingAddFilenames.map(trackNameFromFilename),
-        ]
-      : realTrackNames;
-    const readmePath = path.join(cloneDir, "README.md");
-    const readmeText = await fsp.readFile(readmePath, "utf8");
-    await fsp.writeFile(readmePath, regenerateReadme(readmeText, trackNames));
-
-    setStage("commit");
-    const addedNames = pendingAddFilenames.map(trackNameFromFilename);
-    const deletedNames = pendingDeleteFilenames.map(trackNameFromFilename);
-    const summaryParts = [];
-    if (addedNames.length > 0) summaryParts.push(`+${addedNames.join(", ")}`);
-    if (deletedNames.length > 0) summaryParts.push(`-${deletedNames.join(", ")}`);
-    const summary = summaryParts.join("; ");
-    const commitMessage = dryRun
-      ? `[DRY RUN] Publish: ${summary} (published by ${displayName} via contribute-app)`
-      : `Publish: ${summary} (published by ${displayName} via contribute-app)`;
-    await git.addAndCommit(cloneDir, ["README.md"], { authorName: displayName, message: commitMessage });
-
-    setStage("compute-version");
-    const { versionNumber, tagName: realTagName } = await fetchNextVersion(repoUrl);
-    const tagName = dryRun ? `${DRY_RUN_TAG_PREFIX}${realTagName}` : realTagName;
-    log(`${jobTag} computed next version: ${versionNumber} (tag: ${tagName})`);
-    await git.tagCommit(cloneDir, tagName);
-
-    let pushedBranch = false;
-    let published = false;
+    // Everything from here through tcli-publish is wrapped: nothing in this
+    // section touches anything permanent (real R2 is only ever read, never
+    // mutated; the commit/tag below live only in this temp local clone
+    // until an explicit push later — except a dry run's own disposable
+    // push, which is safe regardless), so any failure here should read as
+    // a clean, nothing-happened failure, not the old "committed but not
+    // published" framing. A SubmissionError thrown by one of the checks
+    // below (already a clear, specific message) passes through unwrapped;
+    // anything else (a raw error from git/tcli/R2) gets wrapped with stage
+    // context, same as the rest of this app's error handling expects.
+    let addedNames, deletedNames, versionNumber, tagName, configPath, zipPath, zipStat;
     try {
-      setStage("push-branch");
-      await git.pushBranch(cloneDir, pushBranchName, { force: forcePush });
-      pushedBranch = true;
+      // Nothing from here through tcli-build touches anything permanent,
+      // for either path — real R2 is only ever read (listTracks()), never
+      // mutated. The resulting track list is always computed in-memory
+      // rather than read back from a real mutation — exactly what a dry
+      // run always did; both paths share it now.
+      setStage("regenerate-readme");
+      const realTrackNames = await storage.listTracks(r2Client, r2Bucket);
+      const trackNames = [
+        ...realTrackNames.filter((name) => !pendingDeleteFilenames.includes(`${name}.ogg`)),
+        ...pendingAddFilenames.map(trackNameFromFilename),
+      ];
+      const readmePath = path.join(cloneDir, "README.md");
+      const readmeText = await fsp.readFile(readmePath, "utf8");
+      await fsp.writeFile(readmePath, regenerateReadme(readmeText, trackNames));
 
-      setStage("push-tag");
-      await git.pushTag(cloneDir, tagName, { force: forcePush });
+      setStage("commit");
+      addedNames = pendingAddFilenames.map(trackNameFromFilename);
+      deletedNames = pendingDeleteFilenames.map(trackNameFromFilename);
+      const summaryParts = [];
+      if (addedNames.length > 0) summaryParts.push(`+${addedNames.join(", ")}`);
+      if (deletedNames.length > 0) summaryParts.push(`-${deletedNames.join(", ")}`);
+      const summary = summaryParts.join("; ");
+      const commitMessage = dryRun
+        ? `[DRY RUN] Publish: ${summary} (published by ${displayName} via contribute-app)`
+        : `Publish: ${summary} (published by ${displayName} via contribute-app)`;
+      await git.addAndCommit(cloneDir, ["README.md"], { authorName: displayName, message: commitMessage });
 
+      setStage("compute-version");
+      const { versionNumber: v, tagName: realTagName } = await fetchNextVersion(repoUrl);
+      versionNumber = v;
+      tagName = dryRun ? `${DRY_RUN_TAG_PREFIX}${realTagName}` : realTagName;
+      log(`${jobTag} computed next version: ${versionNumber} (tag: ${tagName})`);
+      await git.tagCommit(cloneDir, tagName);
+
+      // Pending adds are downloaded straight from the pending prefix, and
+      // pending deletes' local copies removed, for both paths — real R2
+      // hasn't been touched yet either way, so this is the only way to get
+      // an accurate build regardless of dryRun.
       setStage("download-all-tracks");
       const mixtapeDir = path.join(cloneDir, "my mixtape");
       const downloadedCount = await storage.downloadAllTracks(r2Client, r2Bucket, mixtapeDir);
       log(`${jobTag} downloaded ${downloadedCount} tracks from R2 for the build`);
-      if (dryRun) {
-        // Pending adds live under the pending prefix, invisible to
-        // downloadAllTracks() (scoped to the real prefix) — pull each
-        // one's real bytes down directly so the preview package is
-        // accurate. Pending deletes are still present (dry run never
-        // deleted them for real) — remove the local copies.
-        for (const filename of pendingAddFilenames) {
-          await storage.downloadTrackTo(r2Client, r2Bucket, filename, path.join(mixtapeDir, filename), {
-            prefix: PENDING_PREFIX,
-          });
-        }
-        for (const filename of pendingDeleteFilenames) {
-          await fsp.rm(path.join(mixtapeDir, filename), { force: true });
-        }
+      for (const filename of pendingAddFilenames) {
+        await storage.downloadTrackTo(r2Client, r2Bucket, filename, path.join(mixtapeDir, filename), {
+          prefix: PENDING_PREFIX,
+        });
+      }
+      for (const filename of pendingDeleteFilenames) {
+        await fsp.rm(path.join(mixtapeDir, filename), { force: true });
       }
 
-      const configPath = path.join(cloneDir, thunderstoreTomlRelPath);
+      configPath = path.join(cloneDir, thunderstoreTomlRelPath);
       setStage("tcli-build");
       await buildPackage({ configPath, versionNumber, tcliPath });
-      const zipPath = buildOutputZipPath(cloneDir, versionNumber);
-      const zipStat = await fsp.stat(zipPath);
+      zipPath = buildOutputZipPath(cloneDir, versionNumber);
+      zipStat = await fsp.stat(zipPath);
       log(`${jobTag} built package: ${(zipStat.size / 1024 / 1024).toFixed(1)}MB`);
 
-      if (!dryRun) {
+      if (dryRun) {
+        // A dry run's own definition of "done" is a successful build —
+        // still pushes its own disposable, force-pushed branch/tag so a
+        // real diff is inspectable, but never touches real R2,
+        // tcli-publish, or the manifest. Nothing below this block runs for
+        // a dry run.
+        setStage("push-branch");
+        await git.pushBranch(cloneDir, pushBranchName, { force: forcePush });
+        setStage("push-tag");
+        await git.pushTag(cloneDir, tagName, { force: forcePush });
+      } else {
+        // Real publish only, from here on. Nothing permanent has happened
+        // yet — re-check against a *fresh* real R2 listing (not the one
+        // read minutes ago, before clone/build) as a final guard against
+        // out-of-band changes since the early check, same intent the
+        // original double-check always had.
         setStage("check-track-limit-pre-publish");
-        const finalTrackCount = (await storage.listTracks(r2Client, r2Bucket)).length;
+        const freshLiveNames = await storage.listTracks(r2Client, r2Bucket);
+        const finalTrackCount =
+          freshLiveNames.filter((name) => !pendingDeleteFilenames.includes(`${name}.ogg`)).length + pendingAddFilenames.length;
         if (finalTrackCount > MAX_TRACKS) {
           throw new SubmissionError(
             `Track count (${finalTrackCount}) exceeds the ${MAX_TRACKS}-track limit right before publish — refusing to publish. This shouldn't happen under normal use; check for out-of-band changes to the R2 bucket.`,
@@ -325,45 +340,84 @@ export async function processPublish(input, config, deps = {}) {
           );
         }
 
+        // The actual point of no return — see CANCEL_CUTOFF_STAGE and the
+        // function doc comment. If this throws, nothing above has left any
+        // trace: no R2 mutation, no git push. Retrying is just running the
+        // whole pipeline again from a clean slate.
         setStage("tcli-publish");
         await publishPackage({ configPath, filePath: zipPath, tcliPath });
-        published = true;
-
-        setStage("record-manifest");
-        await manifest.applyPublishBatch(r2Client, r2Bucket, {
-          publishedFilenames: pendingAddFilenames,
-          deletedFilenames: pendingDeleteFilenames,
-        });
-
-        if (trackBandwidth) {
-          setStage("record-bandwidth");
-          const updatedUsage = await bandwidth.recordPublish(r2Client, r2Bucket, zipStat.size);
-          log(
-            `${jobTag} recorded ${(zipStat.size / 1e9).toFixed(3)}GB against this month's budget (now ${(updatedUsage.bytesUsed / 1e9).toFixed(2)}GB of ${(bandwidth.LOCK_THRESHOLD_BYTES / 1e9).toFixed(1)}GB)`
-          );
-        } else {
-          log(`${jobTag} bandwidth tracking disabled for this instance — not recorded`);
-        }
+        log(`${jobTag} published to Thunderstore successfully — everything from here is bookkeeping`);
       }
     } catch (err) {
-      if (published) {
-        logError(
-          `${jobTag} published successfully but failed to record it during stage "${stage}" (bookkeeping may now be incomplete): ${err.message}`
+      if (err instanceof SubmissionError) throw err;
+      throw new SubmissionError(
+        `${dryRun ? "Dry run" : "Publish"} failed before reaching Thunderstore: ${err.message}`,
+        { stage }
+      );
+    }
+
+    if (dryRun) {
+      const commitSha = await git.getHeadSha(cloneDir);
+      log(`${jobTag} succeeded in ${elapsed()} (commit ${commitSha.slice(0, 8)}, version ${versionNumber})`);
+      return {
+        dryRun: true,
+        added: addedNames,
+        deleted: deletedNames,
+        versionNumber,
+        tagName,
+        commitSha,
+        branch: pushBranchName,
+        thunderstoreUrl: THUNDERSTORE_URL,
+      };
+    }
+
+    // Thunderstore has the update now, unconditionally. Nothing below can
+    // ever change whether the publish itself succeeded — a failure here
+    // means only this app's own records (R2, git, manifest) might lag
+    // behind reality, logged loudly but never thrown, so it can never look
+    // like the publish itself failed when it didn't.
+    let bookkeepingError = null;
+    try {
+      setStage("apply-queue");
+      for (const filename of pendingDeleteFilenames) {
+        await storage.deleteTrack(r2Client, r2Bucket, filename);
+      }
+      for (const filename of pendingAddFilenames) {
+        await storage.promotePendingTrack(r2Client, r2Bucket, filename);
+      }
+
+      setStage("push-branch");
+      await git.pushBranch(cloneDir, pushBranchName, { force: forcePush });
+
+      setStage("push-tag");
+      await git.pushTag(cloneDir, tagName, { force: forcePush });
+
+      setStage("record-manifest");
+      await manifest.applyPublishBatch(r2Client, r2Bucket, {
+        publishedFilenames: pendingAddFilenames,
+        deletedFilenames: pendingDeleteFilenames,
+      });
+
+      if (trackBandwidth) {
+        setStage("record-bandwidth");
+        const updatedUsage = await bandwidth.recordPublish(r2Client, r2Bucket, zipStat.size);
+        log(
+          `${jobTag} recorded ${(zipStat.size / 1e9).toFixed(3)}GB against this month's budget (now ${(updatedUsage.bytesUsed / 1e9).toFixed(2)}GB of ${(bandwidth.LOCK_THRESHOLD_BYTES / 1e9).toFixed(1)}GB)`
         );
       } else {
-        throw new SubmissionError(
-          pushedBranch
-            ? `Publish committed to ${pushBranchName} but ${dryRun ? "the dry-run build" : "publishing"} failed: ${err.message}`
-            : `${dryRun ? "Dry run" : "Publishing"} failed before the commit was pushed: ${err.message}`,
-          { stage, committedButNotPublished: !dryRun && pushedBranch }
-        );
+        log(`${jobTag} bandwidth tracking disabled for this instance — not recorded`);
       }
+    } catch (err) {
+      logError(
+        `${jobTag} published successfully but failed during bookkeeping stage "${stage}" — Thunderstore itself is unaffected, but R2/git/the manifest may now be inconsistent and need a maintainer's attention: ${err.message}`
+      );
+      bookkeepingError = err.message;
     }
 
     const commitSha = await git.getHeadSha(cloneDir);
     log(`${jobTag} succeeded in ${elapsed()} (commit ${commitSha.slice(0, 8)}, version ${versionNumber})`);
     return {
-      dryRun,
+      dryRun: false,
       added: addedNames,
       deleted: deletedNames,
       versionNumber,
@@ -371,6 +425,7 @@ export async function processPublish(input, config, deps = {}) {
       commitSha,
       branch: pushBranchName,
       thunderstoreUrl: THUNDERSTORE_URL,
+      bookkeepingError,
     };
   } catch (err) {
     logError(`${jobTag} FAILED at stage "${stage}" after ${elapsed()}:`, err.message);

@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
 
+import { CANCEL_CUTOFF_STAGE } from "./publish.js";
+
 // In-memory only — matches the rest of the app's single-instance assumption
 // (same one runExclusive already relies on). A job's whole lifecycle is
 // minutes long, and nothing here needs to survive a restart.
@@ -11,12 +13,7 @@ const jobs = new Map();
 // map doesn't grow unbounded over the service's uptime.
 export const RETENTION_MS = 5 * 60 * 1000;
 
-// Cancellation is only meaningful, and only checked, before this point in a
-// pipeline — see processSubmission/processDeletion's own critical-section
-// boundary (the same point their committedButNotPublished handling begins).
-// Requesting cancel after this point is accepted but has no effect; the
-// job's `cancelable` flag flips to false so the UI can say so honestly.
-export const CANCEL_CUTOFF_STAGE = "push-branch";
+export { CANCEL_CUTOFF_STAGE };
 
 function emptyJob(id, type, dryRun) {
   return {
@@ -79,7 +76,7 @@ export function failJob(id, error) {
   const job = getJob(id);
   if (!job) return;
   job.status = error?.cancelled ? "cancelled" : "failed";
-  job.error = { message: error.message, committedButNotPublished: error.committedButNotPublished || false };
+  job.error = { message: error.message };
   job.cancelable = false;
   broadcast(job, { type: "done", status: job.status, error: job.error });
   scheduleCleanup(id);

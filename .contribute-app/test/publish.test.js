@@ -167,22 +167,26 @@ test("processPublish happy path: runs every step in order, deletes then promotes
   assert.equal(result.versionNumber, "1.0.18");
   assert.equal(result.thunderstoreUrl, THUNDERSTORE_URL);
 
+  // Nothing permanent (R2 mutation, git push) happens until AFTER
+  // publishPackage succeeds — see processPublish's doc comment in
+  // src/publish.js for the full "tcli-publish first" reasoning.
   assert.deepEqual(calls.map((c) => c[0]), [
     "bandwidth.getUsage",
     "manifest.getManifest",
     "cloneRepo",
-    "deleteTrack",
-    "promotePendingTrack",
     "listTracks",
     "addAndCommit",
     "fetchNextVersion",
     "tagCommit",
-    "pushBranch",
-    "pushTag",
     "downloadAllTracks",
+    "downloadTrackTo",
     "buildPackage",
     "listTracks",
     "publishPackage",
+    "deleteTrack",
+    "promotePendingTrack",
+    "pushBranch",
+    "pushTag",
     "manifest.applyPublishBatch",
     "bandwidth.recordPublish",
     "getHeadSha",
@@ -431,10 +435,10 @@ test("dry run downloads pending adds from PENDING_PREFIX", async (t) => {
 
 // --- Failure/partial-failure semantics ---
 
-test("committedButNotPublished when the branch push succeeds but the build/publish fails", async (t) => {
-  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "publish-test-committed-not-published-"));
+test("a tcli-build failure leaves nothing permanent behind — no git push, no R2 mutation (tcli-publish is the actual point of no return, and this fails before it)", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "publish-test-build-fail-"));
   t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
-  const { deps } = makeFakeDeps({
+  const { calls, deps } = makeFakeDeps({
     buildPackage: async () => {
       throw new Error("tcli build failed");
     },
@@ -444,11 +448,16 @@ test("committedButNotPublished when the branch push succeeds but the build/publi
     () => processPublish({ displayName: "Rob" }, BASE_CONFIG, { ...deps, tmpBase: tmpDir }),
     (err) => {
       assert.ok(err instanceof SubmissionError);
-      assert.equal(err.committedButNotPublished, true);
-      assert.match(err.message, /Publish committed to main but publishing failed/);
+      assert.match(err.message, /tcli build failed/);
       return true;
     }
   );
+
+  assert.ok(!calls.some((c) => c[0] === "pushBranch"), "nothing was pushed");
+  assert.ok(!calls.some((c) => c[0] === "pushTag"), "nothing was pushed");
+  assert.ok(!calls.some((c) => c[0] === "deleteTrack"), "R2 was never mutated");
+  assert.ok(!calls.some((c) => c[0] === "promotePendingTrack"), "R2 was never mutated");
+  assert.ok(!calls.some((c) => c[0] === "publishPackage"), "never reached tcli-publish");
 });
 
 test("a real publish that succeeds but fails to update the manifest afterward is still reported as a success", async (t) => {
@@ -467,7 +476,8 @@ test("a real publish that succeeds but fails to update the manifest afterward is
 
   assert.equal(result.dryRun, false);
   assert.ok(result.versionNumber);
-  assert.ok(errorLines.some((l) => l.includes('published successfully but failed to record it during stage "record-manifest"')));
+  assert.match(result.bookkeepingError, /R2 write hiccup/);
+  assert.ok(errorLines.some((l) => l.includes('published successfully but failed during bookkeeping stage "record-manifest"')));
 });
 
 test("a real publish that succeeds but fails to record bandwidth afterward is still reported as a success", async (t) => {
@@ -485,13 +495,14 @@ test("a real publish that succeeds but fails to record bandwidth afterward is st
   const result = await processPublish({ displayName: "Rob" }, BASE_CONFIG, { ...deps, tmpBase: tmpDir });
 
   assert.equal(result.dryRun, false);
-  assert.ok(errorLines.some((l) => l.includes('published successfully but failed to record it during stage "record-bandwidth"')));
+  assert.match(result.bookkeepingError, /R2 write hiccup/);
+  assert.ok(errorLines.some((l) => l.includes('published successfully but failed during bookkeeping stage "record-bandwidth"')));
 });
 
-test("re-checks the track limit immediately before the real publish call, as a final safety net", async (t) => {
+test("re-checks the track limit immediately before the real publish call, as a final safety net — and since this now runs before tcli-publish, nothing has been pushed or mutated when it fires", async (t) => {
   const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "publish-test-recheck-"));
   t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
-  const { deps } = makeFakeDeps({
+  const { calls, deps } = makeFakeDeps({
     storage: {
       async deleteTrack() {},
       async promotePendingTrack() {},
@@ -513,11 +524,15 @@ test("re-checks the track limit immediately before the real publish call, as a f
     (err) => {
       assert.ok(err instanceof SubmissionError);
       assert.match(err.message, /exceeds the 50-track limit right before publish/);
-      // This fires after push-branch/push-tag already succeeded.
-      assert.equal(err.committedButNotPublished, true);
       return true;
     }
   );
+
+  // This check now runs before tcli-publish (the actual point of no
+  // return) instead of after push-branch/push-tag — so unlike before, this
+  // failure genuinely leaves nothing behind to clean up.
+  assert.ok(!calls.some((c) => c[0] === "pushBranch"));
+  assert.ok(!calls.some((c) => c[0] === "publishPackage"));
 });
 
 test("trackBandwidth: false skips the lock check and recording entirely", async (t) => {
@@ -552,16 +567,16 @@ test("onStageChange fires for every real stage transition, in order", async (t) 
     "check-pending",
     "check-track-limit",
     "clone",
-    "apply-queue",
     "regenerate-readme",
     "commit",
     "compute-version",
-    "push-branch",
-    "push-tag",
     "download-all-tracks",
     "tcli-build",
     "check-track-limit-pre-publish",
     "tcli-publish",
+    "apply-queue",
+    "push-branch",
+    "push-tag",
     "record-manifest",
     "record-bandwidth",
     "cleanup",

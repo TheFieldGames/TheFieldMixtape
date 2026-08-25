@@ -24,14 +24,14 @@
       <% deleted.forEach((name) => { %><li>&minus; <%= name %></li><% }) %>
     </ul>
     <p><a href="<%= thunderstoreUrl %>" target="_blank" rel="noopener">View on Thunderstore</a></p>
-  <% } else { %>
-    <p class="error"><%= error %></p>
-    <% if (committedButNotPublished) { %>
+    <% if (locals.bookkeepingError) { %>
       <p class="warning">
-        The change was committed to the repo but publishing to Thunderstore failed.
-        A maintainer needs to manually finish the publish step for this to go live.
+        Published successfully — but something afterward (updating the track list or repo records) failed:
+        <%= bookkeepingError %>. Thunderstore itself is unaffected; a maintainer may need to manually check R2/the manifest.
       </p>
     <% } %>
+  <% } else { %>
+    <p class="error"><%= error %></p>
   <% } %>
   <p><a href="/">Back to tracks</a></p>
 <%- include('partials/footer') %>

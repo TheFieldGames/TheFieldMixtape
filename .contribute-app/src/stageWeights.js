@@ -1,8 +1,16 @@
 // Reference relative durations (seconds) per pipeline stage, used only to
 // size the loading bar's segments proportionally — never to predict actual
-// total time. Seeded from real measured runs (see MixTapeWebPlan.md): a
-// real publish against production took 116.8s, dominated by tcli-publish
-// (83.3s) and clone (18.9s); everything else was under a few seconds each.
+// total time. Seeded from real measured runs under the *old* stage order
+// (see MixTapeWebPlan.md): a real publish against production took 116.8s,
+// dominated by tcli-publish (83.3s) and clone (18.9s); everything else was
+// under a few seconds each. The order below was reworked on 2026-08-25
+// (see MixTapeWebPlan.md's "publish tcli-publish first" redesign) — the
+// per-stage weight *values* are carried over as-is from the old
+// measurement and are only approximate for the new order until a real run
+// under it is measured; the *order* and dry-run-only classification below
+// are what actually matter for correctness (a stage's segment never
+// overshoots past 100% before it's actually done, regardless of how
+// accurate its weight is).
 //
 // If a real stage takes longer than its weight implies, the bar simply
 // sits at the end of that segment until the stage actually completes —
@@ -15,6 +23,15 @@
 // never "current," silently snapped full the instant the next (actually
 // real) stage arrives.
 //
+// push-branch/push-tag now run at a different point in the pipeline
+// depending on dryRun (right after tcli-build for a dry run's own
+// disposable branch; after tcli-publish + apply-queue for a real publish's
+// permanent one) — but since every stage strictly between them here
+// (check-track-limit-pre-publish/tcli-publish/apply-queue) is real-only and
+// gets filtered out for a dry run, the *filtered* dry-run view still lands
+// on push-branch/push-tag immediately after tcli-build, exactly matching
+// its real runtime order. One ordered table correctly serves both paths.
+//
 // "apply-queue" (deleting queued-for-removal tracks and promoting queued
 // adds from the pending R2 prefix) has no real measurement yet — this is a
 // conservative placeholder pending a real batch to measure against, scaled
@@ -25,16 +42,16 @@ const PUBLISH_STAGE_WEIGHTS = [
   ["check-pending", 0.1],
   ["check-track-limit", 0.2],
   ["clone", 19],
-  ["apply-queue", 2],
   ["regenerate-readme", 0.2],
   ["commit", 0.2],
   ["compute-version", 0.6],
-  ["push-branch", 2.4],
-  ["push-tag", 1.6],
   ["download-all-tracks", 3.4],
   ["tcli-build", 6],
   ["check-track-limit-pre-publish", 0.2],
   ["tcli-publish", 85],
+  ["apply-queue", 2],
+  ["push-branch", 2.4],
+  ["push-tag", 1.6],
   ["record-manifest", 0.2],
   ["record-bandwidth", 0.2],
   ["cleanup", 0.1],
@@ -46,9 +63,9 @@ const PUBLISH_STAGE_WEIGHTS = [
 // snapped phantom segment, same problem as check-target-branch above.
 const DRY_RUN_ONLY_STAGES = new Set([
   "check-bandwidth-lock",
-  "apply-queue",
   "check-track-limit-pre-publish",
   "tcli-publish",
+  "apply-queue",
   "record-manifest",
   "record-bandwidth",
 ]);
