@@ -295,6 +295,21 @@ export async function processPublish(input, config, deps = {}) {
       // an accurate build regardless of dryRun.
       setStage("download-all-tracks");
       const mixtapeDir = path.join(cloneDir, "my mixtape");
+      // The freshly cloned "my mixtape/" still carries legacy .ogg files
+      // committed to git from before the R2 migration (see CLAUDE.md) —
+      // vestigial, but never actually removed from the repo. tcli's
+      // build.copy (thunderstore.toml) copies this directory verbatim into
+      // the package, so leaving them here would silently resurrect every
+      // legacy/deleted track into the build regardless of what R2 actually
+      // says is live: R2 is the only place a real deletion happens, and
+      // this directory is the one place that never found out. Clearing
+      // every .ogg here first means the directory ends up holding exactly
+      // what the two steps below put into it — R2's real, current listing
+      // plus this batch's pending adds — nothing left over from git.
+      const preexisting = await fsp.readdir(mixtapeDir).catch(() => []);
+      await Promise.all(
+        preexisting.filter((name) => name.endsWith(".ogg")).map((name) => fsp.rm(path.join(mixtapeDir, name)))
+      );
       const downloadedCount = await storage.downloadAllTracks(r2Client, r2Bucket, mixtapeDir);
       log(`${jobTag} downloaded ${downloadedCount} tracks from R2 for the build`);
       for (const filename of pendingAddFilenames) {

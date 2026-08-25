@@ -433,6 +433,41 @@ test("dry run downloads pending adds from PENDING_PREFIX", async (t) => {
   assert.deepEqual(downloadPrefixes, [PENDING_PREFIX]);
 });
 
+test("a legacy .ogg file left over in the git checkout's \"my mixtape/\" (predating the R2 migration) is cleared before the build, not silently resurrected into the package", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "publish-test-legacy-ogg-"));
+  t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
+  let mixtapeFilesAtBuildTime = null;
+  const { deps } = makeFakeDeps({
+    git: {
+      async cloneRepo(repoUrl, branch, destDir) {
+        await fsp.mkdir(path.join(destDir, "my mixtape"), { recursive: true });
+        await fsp.writeFile(path.join(destDir, "README.md"), SAMPLE_README);
+        // Simulates a real clone of this repo: "my mixtape/" already has
+        // .ogg files checked into git from before the R2 migration,
+        // including one no longer live anywhere (the resurrection bug).
+        await fsp.writeFile(path.join(destDir, "my mixtape", "Long Gone Legacy Track - Nobody.ogg"), "stale bytes");
+        await fsp.writeFile(path.join(destDir, "my mixtape", "mixtape.json"), "{}");
+      },
+    },
+    buildPackage: async ({ configPath, versionNumber }) => {
+      const cloneDir = path.dirname(configPath);
+      mixtapeFilesAtBuildTime = await fsp.readdir(path.join(cloneDir, "my mixtape"));
+      const zipPath = buildOutputZipPath(cloneDir, versionNumber);
+      await fsp.mkdir(path.dirname(zipPath), { recursive: true });
+      await fsp.writeFile(zipPath, "fake zip bytes");
+    },
+  });
+
+  await processPublish({ displayName: "Rob" }, BASE_CONFIG, { ...deps, tmpBase: tmpDir });
+
+  assert.ok(
+    !mixtapeFilesAtBuildTime.includes("Long Gone Legacy Track - Nobody.ogg"),
+    "a pre-existing legacy .ogg from the git checkout must not survive into the built package"
+  );
+  assert.ok(mixtapeFilesAtBuildTime.includes("mixtape.json"), "non-.ogg files (e.g. mixtape.json) are left alone");
+  assert.ok(mixtapeFilesAtBuildTime.includes("Keeper Track - Someone.ogg"), "real R2-sourced tracks still make it in");
+});
+
 // --- Failure/partial-failure semantics ---
 
 test("a tcli-build failure leaves nothing permanent behind — no git push, no R2 mutation (tcli-publish is the actual point of no return, and this fails before it)", async (t) => {
