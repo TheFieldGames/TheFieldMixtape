@@ -7,52 +7,53 @@ Want to add a song? See [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
 <!-- TRACKLIST:START -->
 1. All Along the Watchtower - Jimmy Hendrix
-2. Because I'm Me - The Avalanches
-3. Break Stuff - Limp Bizkit
-4. Bust a Move - Young MC
-5. Can't Punk Me - JID
-6. DARE - Gorillaz
-7. Don't Stop Me Now - Queen
-8. Dreaming - Wolf Parade
-9. Ella Baila
-10. Everywhere - Fleetwood Mac
-11. Fly - Sugar Gay
-12. Freaks - Timmy Trumpet
-13. Genesis - Justice
-14. Get Busy - Sean Paul
-15. Get Up Offa That Thing - James Brown
-16. Hamster Dance
-17. Helena - My Chemical Romance
-18. Hooked on a Feeling
-19. If I Was a Folkstar - The Avalanches
-20. In Da Club - 50 Cent
-21. In the End - Linkin Park
-22. In Too Deep - Sum 41
-23. Jump in Line
-24. King Kunta - Kendrick Lamar
-25. Lifestyle - Rich Gang
-26. Little Bitty Pretty One
-27. LUMP - Presidents of the United States
-28. My Own Worst Enemy - Lit
-29. Nightcall - Kavinsky
-30. Not Like Us - Kendrick Lamar
-31. One More Time - Daft Punk
-32. One Week - Barenaked Ladies
-33. Pepper - Butthole Surfers
-34. Pile - Demonstration - 03 animals
-35. Ransom - Juice Wrld
-36. Rascal King - MMBostones
-37. Semi-Charmed Life - Third Eye Blind
-38. Skeleton Cartier - Popcaan
-39. Squabble Up - Kendrick Lamar
-40. Super-Bon-Bon - Soul Coughing
-41. Tecata
-42. Teenage Dirtbag - Wheatus
-43. Three is the Magic Number - De La Soul
-44. Touch the Sky - Kanye
-45. USA
-46. Valley Ghoul - Provoker
-47. Veridis Quo - Daft Punk
-48. Woke Up - Dae Dae
-49. You Can Call me Al - Paul Simon
+2. All You Children - Jamie xx, Avalanches
+3. Because I'm Me - The Avalanches
+4. Break Stuff - Limp Bizkit
+5. Bust a Move - Young MC
+6. Can't Punk Me - JID
+7. DARE - Gorillaz
+8. Don't Stop Me Now - Queen
+9. Dreaming - Wolf Parade
+10. Ella Baila
+11. Everywhere - Fleetwood Mac
+12. Fly - Sugar Gay
+13. Freaks - Timmy Trumpet
+14. Genesis - Justice
+15. Get Busy - Sean Paul
+16. Get Up Offa That Thing - James Brown
+17. Hamster Dance
+18. Helena - My Chemical Romance
+19. Hooked on a Feeling
+20. If I Was a Folkstar - The Avalanches
+21. In Da Club - 50 Cent
+22. In the End - Linkin Park
+23. In Too Deep - Sum 41
+24. Jump in Line
+25. King Kunta - Kendrick Lamar
+26. Lifestyle - Rich Gang
+27. Little Bitty Pretty One
+28. LUMP - Presidents of the United States
+29. My Own Worst Enemy - Lit
+30. Nightcall - Kavinsky
+31. Not Like Us - Kendrick Lamar
+32. One More Time - Daft Punk
+33. One Week - Barenaked Ladies
+34. Pepper - Butthole Surfers
+35. Pile - Demonstration - 03 animals
+36. Ransom - Juice Wrld
+37. Rascal King - MMBostones
+38. Semi-Charmed Life - Third Eye Blind
+39. Skeleton Cartier - Popcaan
+40. Squabble Up - Kendrick Lamar
+41. Super-Bon-Bon - Soul Coughing
+42. Tecata
+43. Teenage Dirtbag - Wheatus
+44. Three is the Magic Number - De La Soul
+45. Touch the Sky - Kanye
+46. USA
+47. Valley Ghoul - Provoker
+48. Veridis Quo - Daft Punk
+49. Woke Up - Dae Dae
+50. You Can Call me Al - Paul Simon
 <!-- TRACKLIST:END -->
