@@ -13,6 +13,7 @@ import { createTracksRouter } from "./routes/tracks.js";
 import { createJobsRouter } from "./routes/jobs.js";
 import { createLockRouter } from "./routes/lock.js";
 import { createDiagnosticsRouter } from "./routes/diagnostics.js";
+import { createOverviewRouter } from "./routes/overview.js";
 import { SubmissionError, THUNDERSTORE_URL } from "./src/publish.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -66,6 +67,7 @@ app.use(createTracksRouter(config, lockStore));
 app.use(createJobsRouter());
 app.use(createLockRouter(lockStore));
 app.use(createDiagnosticsRouter());
+app.use(createOverviewRouter());
 
 // Friendly handling for multer errors (e.g. file over the 100MB cap, or
 // mp3FileFilter's SubmissionError rejecting a non-.mp3 upload) instead of a

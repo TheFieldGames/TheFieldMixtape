@@ -1251,3 +1251,116 @@ body[data-lock-state="other"] .lock-hint {
 .batch-summary .muted {
   color: var(--text-muted);
 }
+
+/* ---------- "How It Works" overview page — a single page for two very
+   different readers (hiring managers / engineers), toggled client-side
+   rather than split into two pages that could drift out of sync. ---------- */
+
+.overview-page {
+  max-width: 760px;
+}
+
+.ov-tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.ov-tab {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 0.5rem 0.9rem;
+  border-radius: 7px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.ov-tab:hover:not(.active) {
+  color: var(--text-cream);
+  border-color: var(--text-muted);
+}
+
+.ov-tab.active {
+  background: var(--stripe-red);
+  border-color: var(--stripe-red);
+  color: var(--text-cream);
+}
+
+/* Belt-and-suspenders alongside the [hidden] attribute the tab-switch
+   script toggles directly — see the CSS gotcha in CLAUDE.md about
+   author display rules beating the browser's built-in [hidden] one; this
+   panel doesn't currently set its own display, but the override is cheap
+   insurance against that regressing later. */
+.ov-panel[hidden] {
+  display: none;
+}
+
+.ov-lead {
+  font-size: 1.02rem;
+  line-height: 1.5;
+  color: var(--text-cream);
+  margin: 0 0 1.25rem;
+}
+
+.ov-panel h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-cream);
+  letter-spacing: 0.01em;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.ov-panel p {
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--text-cream);
+  margin: 0 0 0.75rem;
+}
+
+.ov-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0 0 0.75rem;
+  padding-left: 1.1rem;
+}
+
+.ov-list li {
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+code {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.82em;
+  background: var(--shell-window);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
+}
+
+.ov-note {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.ov-back {
+  margin-top: 1.5rem;
+  font-size: 0.85rem;
+}
+
+.ov-back a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.ov-back a:hover {
+  color: var(--text-cream);
+  text-decoration: underline;
+}

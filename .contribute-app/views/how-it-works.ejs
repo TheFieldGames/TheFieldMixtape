@@ -1,0 +1,91 @@
+<%- include('partials/header', { containerModifier: 'container-wide overview-page' }) %>
+<%- include('partials/label-strip', {
+  title: 'How It Works',
+  subtitle: 'A guided tour of the contribute app — pick the version that’s for you',
+  titleHref: thunderstoreUrl,
+}) %>
+
+  <div class="ov-tabs" role="tablist">
+    <button type="button" class="ov-tab active" data-tab="manager" role="tab" aria-selected="true">For hiring managers</button>
+    <button type="button" class="ov-tab" data-tab="engineer" role="tab" aria-selected="false">For engineers</button>
+  </div>
+
+  <div class="ov-panel" id="ov-manager" data-tab-panel="manager" role="tabpanel">
+    <p class="ov-lead">A small web tool that lets a trusted group of friends add music tracks to a community game mod &mdash; without needing to know Git or GitHub.</p>
+
+    <h2>The problem</h2>
+    <p>Before this existed, contributing a track meant opening a pull request on GitHub: a real barrier for non-technical friends, and slow even for technical ones &mdash; a maintainer had to notice it, review it, and manually publish afterward. This app turns that into a login and a drag-and-drop.</p>
+
+    <h2>What I built</h2>
+    <p>The whole product, end to end: the visual design (a cassette-tape&ndash;themed UI, mobile-friendly, the one you&rsquo;re looking at right now), the backend pipeline (audio conversion, cloud storage, packaging, publishing to a real public mod registry), and the guardrails that make it safe for multiple people to use casually at the same time. I designed it, built it, tested it (286 automated tests), deployed it, and I&rsquo;m the one who finds out informally when something breaks.</p>
+
+    <h2>Judgment calls worth highlighting</h2>
+    <ul class="ov-list">
+      <li><strong>Made unsafe actions safe, instead of scary.</strong> Removing a track is reversible right up until publish, so there are no &ldquo;are you sure?&rdquo; dialogs slowing people down &mdash; undo does the job a confirmation popup usually does, better.</li>
+      <li><strong>Built for the people actually using it, not an idealized user.</strong> The upload flow guesses a track&rsquo;s title and artist from its filename to save typing, but always leaves it editable &mdash; a small thing, but it&rsquo;s the difference between a tool people tolerate and one they don&rsquo;t mind using.</li>
+      <li><strong>Respected the constraints of free-tier infrastructure instead of ignoring them until something broke.</strong> The app meters its own bandwidth against the hosting provider&rsquo;s free-tier cap and locks out publishing before crossing it, rather than trusting the host not to shut things down mid-release.</li>
+      <li><strong>Kept a safe way to demo the real thing.</strong> The Demo login you likely used to get here runs the entire real pipeline end to end, isolated so it can never touch production data &mdash; nothing about this tour is a mockup.</li>
+      <li><strong>Fixed the design, not just the bug.</strong> A few tracks once got stuck mid-publish in production, in a state that looked live but wasn&rsquo;t. Instead of patching around it, I reordered the whole publishing pipeline so that class of failure can&rsquo;t happen at all going forward &mdash; the engineer tab has the full story.</li>
+    </ul>
+
+    <h2>Why it matters</h2>
+    <p>It&rsquo;s a small app, but a complete one: the same lifecycle as a much bigger system &mdash; design, build, test, deploy, monitor, and keep evolving after &ldquo;done.&rdquo; Curious about the mechanics behind any of this? The engineer tab above goes underneath the hood.</p>
+  </div>
+
+  <div class="ov-panel" id="ov-engineer" data-tab-panel="engineer" role="tabpanel" hidden>
+    <p class="ov-lead">Node.js/Express, server-rendered EJS, vanilla client-side JS &mdash; a classic multi-page app, deliberately not a SPA framework.</p>
+
+    <h2>Stack</h2>
+    <ul class="ov-list">
+      <li>Node.js + Express, EJS view templates rendered server-side; every route is a real page load, smoothed by the View Transitions API rather than client-side routing.</li>
+      <li>No JS framework on the client &mdash; plain DOM APIs, event delegation, and <code>fetch</code>.</li>
+      <li>Cloudflare R2 (S3-compatible object storage) holds both the audio files and a single JSON manifest that acts as the app&rsquo;s only persistence layer &mdash; no traditional database.</li>
+      <li>Git + Thunderstore&rsquo;s official <code>tcli</code> handle packaging and publishing to the actual public mod registry.</li>
+      <li>Docker on Render for hosting.</li>
+    </ul>
+
+    <h2>Data model</h2>
+    <p><code>manifest.json</code> in R2 is the single source of truth: live tracks, <code>pendingDeletes</code>, and a publish log, read fresh and rewritten atomically on every mutating request. Reading/writing that one object <em>is</em> the persistence layer.</p>
+
+    <h2>Concurrency</h2>
+    <p>The app assumes exactly one running instance (true by default on Render&rsquo;s free/starter tiers) and leans on that for two things:</p>
+    <ul class="ov-list">
+      <li>An in-process mutex serializes every operation that touches the manifest &mdash; queueing an add, a delete, an undo &mdash; so concurrent requests can&rsquo;t race each other into a corrupted manifest.</li>
+      <li>A single-user &ldquo;edit lock&rdquo; (5-minute idle auto-expiry, with a 30-second &ldquo;still there?&rdquo; warning) stops two people from building conflicting batches of changes at once. Logging out releases it immediately; a browser just closing gets caught by idle expiry.</li>
+    </ul>
+
+    <h2>Live collaboration, without a framework</h2>
+    <p>Anyone not currently holding the edit lock polls a fragment endpoint every 10 seconds and swaps in the freshly server-rendered HTML in place &mdash; the exact same template the full page itself uses, so there&rsquo;s exactly one source of truth for what the queue looks like, and no separate client-side rendering logic to keep in sync with the server. Whoever <em>does</em> hold the lock never polls: their own actions already refresh that same fragment on success, and polling out from under someone mid-edit would wipe out their in-progress, unsaved form input.</p>
+
+    <h2>Resource limits, enforced not assumed</h2>
+    <p>A 50-track cap and a per-track file size cap, both checked at submit time and again immediately before a real publish as a final safety net. The track cap exists specifically because a large package can OOM-crash the packaging tool on the host&rsquo;s small container during upload &mdash; lowered from 70 after a 58-track/249MB package actually did; a smaller cap helps on average but isn&rsquo;t a guaranteed fix on its own, so it&rsquo;s an acknowledged live limitation, not a solved one. A monthly bandwidth budget is tracked in R2 and locks out real publishing at a safety margin below the hosting provider&rsquo;s actual outbound cap &mdash; the publish step uploads the entire package every time (Thunderstore versions are immutable full zips, not diffs), so that upload, not the R2 download side, is the real bandwidth cost to watch.</p>
+
+    <h2>Publishing</h2>
+    <p>A single orchestration function runs the whole pipeline for one queued batch, and its stage order encodes a hard-learned lesson: <strong>publishing to the registry is the actual point of no return, so it now happens before anything permanent, not after.</strong> Clone &rarr; regenerate the tracklist &rarr; commit &rarr; compute and tag the next version &rarr; download the full library &rarr; build the package &rarr; <strong>publish it to the registry</strong> &mdash; every step up to and including that one only ever touches a temporary local clone or R2 in read-only mode; nothing real has changed yet. Only after the registry confirms the upload does the pipeline promote/delete the real R2 objects, push git for real, and update the manifest. Every stage is logged with elapsed time and streamed live to the browser&rsquo;s progress modal.</p>
+    <p>That ordering is a direct rewrite of an earlier design that had it backwards: R2 was mutated and git was pushed <em>before</em> the registry publish call, so when that call failed downstream for unrelated reasons, a real batch of tracks was left promoted-but-not-actually-published &mdash; a permanent, inconsistent mess that took a real debugging session (traced with a small diagnostic endpoint that captures the raw HTTP response instead of trusting the publishing tool&rsquo;s generic error) to untangle. Patching the specific idempotency gaps that incident exposed would have worked, but reordering the pipeline so the failure mode can&rsquo;t occur at all was the better fix: a failed publish attempt now leaves genuinely nothing changed, and if something fails <em>after</em> the registry already has the update, that&rsquo;s logged as a non-fatal bookkeeping error &mdash; Thunderstore already has it either way, so it&rsquo;s never reported to the user as a failure.</p>
+
+    <h2>Testing &amp; operations</h2>
+    <ul class="ov-list">
+      <li>286 automated tests via Node&rsquo;s built-in test runner &mdash; no test framework dependency.</li>
+      <li>Plain timestamped stdout/stderr logging; Render captures container output automatically, so there&rsquo;s no logging library in the dependency tree.</li>
+      <li>Real logins and publishes notify a Discord webhook &mdash; routed through a small, separately deployed Cloudflare Worker relay (its own runtime, its own secret) rather than posted to Discord directly, after the direct route turned out to be silently blocked by an edge firewall rule on the host&rsquo;s shared outbound IP.</li>
+      <li>An isolated dry-run mode &mdash; a separate storage prefix, git branch, and tag prefix &mdash; lets the entire real pipeline run end to end (including from this very demo) without ever touching production data.</li>
+    </ul>
+  </div>
+
+  <p class="ov-back"><a href="/">&larr; Back to tracks</a></p>
+
+  <script>
+    document.querySelectorAll('.ov-tab').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.ov-tab').forEach((b) => {
+          b.classList.toggle('active', b === btn);
+          b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
+        });
+        document.querySelectorAll('.ov-panel').forEach((panel) => {
+          panel.hidden = panel.dataset.tabPanel !== btn.dataset.tab;
+        });
+      });
+    });
+  </script>
+<%- include('partials/footer') %>

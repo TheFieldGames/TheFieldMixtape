@@ -120,6 +120,7 @@
 <div class="batch-bar">
   <div class="batch-identity">
     <a href="<%= thunderstoreUrl %>" target="_blank" rel="noopener" class="batch-link">TheFieldMixtape &#8599;</a>
+    <% if (isDemo) { %><a href="/how-it-works" class="batch-link">How it works</a><% } %>
     <span class="batch-user"><%= displayName %><% if (isDemo) { %> <span class="tag tag-pending" title="Demo sessions can edit and queue changes, but Publish always runs as a dry run.">demo</span><% } %></span>
     <form method="POST" action="/logout" class="inline-form">
       <button type="submit" class="link-button batch-logout">log out</button>
