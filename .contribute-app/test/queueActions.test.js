@@ -132,6 +132,44 @@ test("queueTrackAdd rejects when projected live+pending count would exceed MAX_T
   );
 });
 
+test("queueTrackAdd allows queueing an add once a queued deletion frees up the room, even while already at MAX_TRACKS", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "queue-test-limit-freed-by-delete-"));
+  t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
+  const uploadPath = await makeUploadFile(tmpDir);
+  const fullTracks = Object.fromEntries(
+    Array.from({ length: MAX_TRACKS }, (_, i) => [`T${i}.ogg`, { addedBy: "Alex", addedAt: "2026-08-01T00:00:00.000Z", status: "live" }])
+  );
+  const { deps } = makeFakeDeps({
+    manifest: { async getManifest() { return { tracks: fullTracks, pendingDeletes: ["T0.ogg"], publishLog: [] }; } },
+  });
+
+  const result = await queueTrackAdd(
+    { uploadPath, title: "New Track", artist: "Someone", displayName: "Alex" },
+    BASE_CONFIG,
+    { ...deps, tmpBase: tmpDir }
+  );
+
+  assert.equal(result.filename, "New Track - Someone.ogg");
+});
+
+test("queueTrackAdd still rejects when a queued deletion doesn't free up enough room", async (t) => {
+  const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "queue-test-limit-not-enough-"));
+  t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));
+  const uploadPath = await makeUploadFile(tmpDir);
+  // MAX_TRACKS live tracks, no deletions queued at all -- still full.
+  const fullTracks = Object.fromEntries(
+    Array.from({ length: MAX_TRACKS }, (_, i) => [`T${i}.ogg`, { addedBy: "Alex", addedAt: "2026-08-01T00:00:00.000Z", status: "live" }])
+  );
+  const { deps } = makeFakeDeps({
+    manifest: { async getManifest() { return { tracks: fullTracks, pendingDeletes: [], publishLog: [] }; } },
+  });
+
+  await assert.rejects(
+    () => queueTrackAdd({ uploadPath, title: "T", artist: "A", displayName: "Alex" }, BASE_CONFIG, { ...deps, tmpBase: tmpDir }),
+    new RegExp(`would put the mixtape at ${MAX_TRACKS + 1} tracks`)
+  );
+});
+
 test("queueTrackAdd rejects a converted file over the size limit, and never uploads it", async (t) => {
   const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "queue-test-size-"));
   t.after(() => fsp.rm(tmpDir, { recursive: true, force: true }));

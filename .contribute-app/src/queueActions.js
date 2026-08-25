@@ -45,13 +45,21 @@ export async function queueTrackAdd(input, config, deps = {}) {
       throw new SubmissionError(`"${filename}" is already queued.`, { stage: "check-duplicate" });
     }
 
+    // Projected final count must account for queued deletions too, not
+    // just live+pending adds — a delete queued against a live track frees
+    // up a slot the moment it's queued (it'll actually be removed at the
+    // next Publish), the same way processPublish's own pre-publish
+    // recheck already accounts for pendingDeletes. Forgetting that here
+    // meant queueing an add could be refused as "over the limit" even
+    // when a queued deletion would leave real room for it.
     const manifestData = await manifest.getManifest(r2Client, r2Bucket);
-    const liveAndPendingCount = Object.values(manifestData.tracks).filter(
-      (entry) => entry.status === "live" || entry.status === "pending"
-    ).length;
-    if (liveAndPendingCount + 1 > MAX_TRACKS) {
+    const currentLiveCount = Object.values(manifestData.tracks).filter((entry) => entry.status === "live").length;
+    const currentPendingAddCount = Object.values(manifestData.tracks).filter((entry) => entry.status === "pending").length;
+    const currentPendingDeleteCount = manifestData.pendingDeletes.length;
+    const projectedCount = currentLiveCount - currentPendingDeleteCount + currentPendingAddCount + 1;
+    if (projectedCount > MAX_TRACKS) {
       throw new SubmissionError(
-        `Queueing this would put the mixtape at ${liveAndPendingCount + 1} tracks, over the ${MAX_TRACKS}-track limit.`,
+        `Queueing this would put the mixtape at ${projectedCount} tracks, over the ${MAX_TRACKS}-track limit.`,
         { stage: "check-track-limit" }
       );
     }
