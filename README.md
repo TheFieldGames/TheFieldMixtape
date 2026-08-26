@@ -28,15 +28,15 @@ Want to add a song? See [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 20. If I Was a Folkstar - The Avalanches
 21. In Da Club - 50 Cent
 22. In the End - Linkin Park
-23. In Too Deep - Sum 41
-24. Jump in Line
-25. King Kunta - Kendrick Lamar
-26. Lifestyle - Rich Gang
-27. Little Bitty Pretty One
-28. LUMP - Presidents of the United States
-29. My Own Worst Enemy - Lit
-30. Nightcall - Kavinsky
-31. Not Like Us - Kendrick Lamar
+23. Jump in Line
+24. King Kunta - Kendrick Lamar
+25. Lifestyle - Rich Gang
+26. Little Bitty Pretty One
+27. LUMP - Presidents of the United States
+28. My Own Worst Enemy - Lit
+29. Nightcall - Kavinsky
+30. Not Like Us - Kendrick Lamar
+31. Ona Tanczy Dla Mnie - Weekend
 32. One More Time - Daft Punk
 33. One Week - Barenaked Ladies
 34. Pepper - Butthole Surfers
