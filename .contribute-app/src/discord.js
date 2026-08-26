@@ -105,6 +105,11 @@ async function postToDiscord(content, { webhookUrl, relayUrl, relaySecret, fetch
     log(`Discord ${what} notification: attempt ${retried ? 2 : 1}${relayUrl ? " (via relay)" : ""}`);
     const headers = { "Content-Type": "application/json" };
     if (relayUrl && relaySecret) headers["X-Relay-Secret"] = relaySecret;
+    // Tells the relay Worker which kind of event this is — it fans a
+    // "publish" event out to a second webhook too (a separate, more public
+    // channel), but only ever sends "login" to the primary. See
+    // discord-relay-worker/src/index.js's own doc comment.
+    if (relayUrl) headers["X-Notification-Type"] = what;
     const response = await fetchFn(targetUrl, {
       method: "POST",
       headers,
@@ -165,8 +170,12 @@ export async function notifyLogin(
 // decides that, this module doesn't know about dryRun at all. `added`/
 // `deleted` are the human-readable track names processPublish already
 // returns (see src/publish.js's addedNames/deletedNames), not filenames.
+// Deliberately doesn't name who published (unlike notifyLogin) — this
+// message also goes to a second, more public webhook (see the relay
+// Worker's X-Notification-Type fan-out), where attributing changes to a
+// specific person isn't wanted.
 export async function notifyPublish(
-  { displayName, added = [], deleted = [], versionNumber, thunderstoreUrl },
+  { added = [], deleted = [], versionNumber, thunderstoreUrl },
   {
     webhookUrl = process.env.DISCORD_WEBHOOK_URL,
     relayUrl = process.env.DISCORD_RELAY_URL,
@@ -177,7 +186,7 @@ export async function notifyPublish(
     sleepFn,
   } = {}
 ) {
-  const lines = [`📦 **${displayName}** published TheFieldMixtape v${versionNumber}`];
+  const lines = [`📦 Someone published new changes to the TheFieldMixtape v${versionNumber}`];
   if (added.length > 0) {
     lines.push("", "**Added:**", ...added.map((name) => `• ${name}`));
   }

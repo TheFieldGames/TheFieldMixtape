@@ -245,7 +245,9 @@ export function createTracksRouter(config, lockStore) {
         // errors, and a slow/broken webhook must never hold up completing
         // the job the user is actively watching in the progress modal.
         if (!result.dryRun) {
-          notifyPublish({ displayName: sanitizeDisplayName(displayName), ...result });
+          // Deliberately not passing displayName — notifyPublish never
+          // names who published (see its own doc comment in src/discord.js).
+          notifyPublish(result);
         }
         jobs.completeJob(jobId, result);
       })

@@ -5,13 +5,22 @@
 // ban. This Worker runs on Cloudflare's own edge network instead, so it
 // posts to Discord from a completely different IP pool than Render's.
 //
-// The real Discord webhook URL lives only here, as a Worker secret — never
-// passed in by the caller — so even if this Worker's public URL leaks,
-// it can only ever relay to this one preconfigured webhook, not act as an
-// open relay to anywhere an attacker chooses. Access is additionally
-// gated by a shared secret header, checked before any of that.
+// The real Discord webhook URLs live only here, as Worker secrets — never
+// passed in by the caller — so even if this Worker's public URL leaks, it
+// can only ever relay to these preconfigured webhooks, not act as an open
+// relay to anywhere an attacker chooses. Access is additionally gated by a
+// shared secret header, checked before any of that.
+//
+// A "publish" event (src/discord.js's notifyPublish, tagged via the
+// X-Notification-Type header) also fans out to DISCORD_WEBHOOK_URL_SECONDARY
+// — a second, more public channel — while a "login" event only ever goes to
+// the primary. The secondary send is fire-and-forget (ctx.waitUntil, not
+// awaited before responding) and never affects the response the caller
+// sees: that's still driven entirely by the primary webhook, same as
+// before this existed. If DISCORD_WEBHOOK_URL_SECONDARY isn't set, nothing
+// fans out at all — this app works exactly as it always did.
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     if (request.method !== "POST") {
       return new Response("Method Not Allowed", { status: 405 });
     }
@@ -25,7 +34,20 @@ export default {
       return new Response("Relay not configured", { status: 500 });
     }
 
+    const notificationType = request.headers.get("X-Notification-Type");
     const body = await request.text();
+
+    if (notificationType === "publish" && env.DISCORD_WEBHOOK_URL_SECONDARY) {
+      const secondaryPost = fetch(env.DISCORD_WEBHOOK_URL_SECONDARY, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      }).catch((err) => {
+        console.error("Secondary webhook post failed:", err.message);
+      });
+      ctx.waitUntil(secondaryPost);
+    }
+
     const discordResponse = await fetch(env.DISCORD_WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

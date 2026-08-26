@@ -157,7 +157,7 @@ test("a retried notification logs both attempt 1 and attempt 2, in order", async
   const sleepFn = fakeSleep();
   const logLines = [];
   await notifyPublish(
-    { displayName: "Rob", added: ["A - B"], deleted: [], versionNumber: "1.0.0" },
+    { added: ["A - B"], deleted: [] },
     { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, log: (...args) => logLines.push(args.join(" ")) }
   );
   assert.deepEqual(
@@ -181,17 +181,16 @@ test("nothing is logged at all (attempt or otherwise) when no webhook URL is con
 test("notifyPublish does nothing when no webhook URL is configured", async () => {
   const fetchFn = fakeFetch();
   await notifyPublish(
-    { displayName: "Rob", added: ["A - B"], deleted: [], versionNumber: "1.4.8" },
+    { added: ["A - B"], deleted: [] },
     { webhookUrl: undefined, fetchFn, log: NOOP_LOG }
   );
   assert.equal(fetchFn.calls.length, 0);
 });
 
-test("notifyPublish names who published, the version, and lists both added and deleted tracks", async () => {
+test("notifyPublish never names who published — it's deliberately anonymous, unlike notifyLogin — but still includes the version and the track lists", async () => {
   const fetchFn = fakeFetch();
   await notifyPublish(
     {
-      displayName: "Rob",
       added: ["Electric Feel (Justice Remix) - MGMT, Justice"],
       deleted: ["Do I Wanna Know - Arctic Monkeys"],
       versionNumber: "1.4.8",
@@ -201,8 +200,8 @@ test("notifyPublish names who published, the version, and lists both added and d
   );
 
   const body = JSON.parse(fetchFn.calls[0].options.body);
-  assert.match(body.content, /Rob/);
-  assert.match(body.content, /1\.4\.8/);
+  assert.match(body.content, /Someone published new changes to the TheFieldMixtape v1\.4\.8/);
+  assert.doesNotMatch(body.content, /Rob/);
   assert.match(body.content, /Added:/);
   assert.match(body.content, /Electric Feel \(Justice Remix\) - MGMT, Justice/);
   assert.match(body.content, /Removed:/);
@@ -213,7 +212,7 @@ test("notifyPublish names who published, the version, and lists both added and d
 test("notifyPublish omits the Added section entirely when nothing was added", async () => {
   const fetchFn = fakeFetch();
   await notifyPublish(
-    { displayName: "Rob", added: [], deleted: ["Old Track - Someone"], versionNumber: "1.4.9" },
+    { added: [], deleted: ["Old Track - Someone"] },
     { webhookUrl: "https://discord.example/webhook", fetchFn, log: NOOP_LOG }
   );
   const body = JSON.parse(fetchFn.calls[0].options.body);
@@ -224,7 +223,7 @@ test("notifyPublish omits the Added section entirely when nothing was added", as
 test("notifyPublish omits the Removed section entirely when nothing was deleted", async () => {
   const fetchFn = fakeFetch();
   await notifyPublish(
-    { displayName: "Rob", added: ["New Track - Someone"], deleted: [], versionNumber: "1.4.9" },
+    { added: ["New Track - Someone"], deleted: [] },
     { webhookUrl: "https://discord.example/webhook", fetchFn, log: NOOP_LOG }
   );
   const body = JSON.parse(fetchFn.calls[0].options.body);
@@ -236,10 +235,8 @@ test("notifyPublish lists every added and deleted track, not just a count", asyn
   const fetchFn = fakeFetch();
   await notifyPublish(
     {
-      displayName: "Rob",
       added: ["Track One - Artist", "Track Two - Artist"],
       deleted: ["Track Three - Artist"],
-      versionNumber: "2.0.0",
     },
     { webhookUrl: "https://discord.example/webhook", fetchFn, log: NOOP_LOG }
   );
@@ -254,7 +251,7 @@ test("a non-ok webhook response for a publish notification is logged, not thrown
   const logLines = [];
   await assert.doesNotReject(
     notifyPublish(
-      { displayName: "Rob", added: ["A - B"], deleted: [], versionNumber: "1.0.0" },
+      { added: ["A - B"], deleted: [] },
       { webhookUrl: "https://discord.example/webhook", fetchFn, log: NOOP_LOG, logError: (...args) => logLines.push(args.join(" ")) }
     )
   );
@@ -494,7 +491,7 @@ test("a 429 through the relay is retried the same way as a direct 429, still tar
 test("notifyPublish also routes through the relay when configured", async () => {
   const fetchFn = fakeFetch();
   await notifyPublish(
-    { displayName: "Rob", added: ["A - B"], deleted: [], versionNumber: "1.0.0" },
+    { added: ["A - B"], deleted: [] },
     {
       webhookUrl: "https://discord.example/webhook",
       relayUrl: "https://relay.example/post",
@@ -511,9 +508,36 @@ test("notifyPublish also retries a 429 the same way", async () => {
   const sleepFn = fakeSleep();
 
   await notifyPublish(
-    { displayName: "Rob", added: ["A - B"], deleted: [], versionNumber: "1.0.0" },
+    { added: ["A - B"], deleted: [] },
     { webhookUrl: "https://discord.example/webhook", fetchFn, sleepFn, log: NOOP_LOG, logError: () => {} }
   );
 
   assert.equal(fetchFn.calls.length, 2);
+});
+
+// --- X-Notification-Type header (tells the relay Worker which webhook(s)
+// to fan out to — see discord-relay-worker/src/index.js) ---
+
+test("a login notification sent through the relay carries X-Notification-Type: login", async () => {
+  const fetchFn = fakeFetch();
+  await notifyLogin(
+    { displayName: "Rob" },
+    { webhookUrl: "https://discord.example/webhook", relayUrl: "https://relay.example/post", relaySecret: "shh", fetchFn, log: NOOP_LOG }
+  );
+  assert.equal(fetchFn.calls[0].options.headers["X-Notification-Type"], "login");
+});
+
+test("a publish notification sent through the relay carries X-Notification-Type: publish", async () => {
+  const fetchFn = fakeFetch();
+  await notifyPublish(
+    { added: ["A - B"], deleted: [] },
+    { webhookUrl: "https://discord.example/webhook", relayUrl: "https://relay.example/post", relaySecret: "shh", fetchFn, log: NOOP_LOG }
+  );
+  assert.equal(fetchFn.calls[0].options.headers["X-Notification-Type"], "publish");
+});
+
+test("no X-Notification-Type header is sent when posting straight to Discord (no relay configured)", async () => {
+  const fetchFn = fakeFetch();
+  await notifyPublish({ added: ["A - B"], deleted: [] }, { webhookUrl: "https://discord.example/webhook", fetchFn, log: NOOP_LOG });
+  assert.equal(fetchFn.calls[0].options.headers["X-Notification-Type"], undefined);
 });
