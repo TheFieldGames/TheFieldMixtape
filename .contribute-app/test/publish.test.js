@@ -14,6 +14,7 @@ import {
   buildOutputZipPath,
 } from "../src/publish.js";
 import { PENDING_PREFIX } from "../src/storage.js";
+import { PACKAGE_README_FILENAME } from "../src/readme.js";
 import { LOCK_THRESHOLD_BYTES } from "../src/bandwidth.js";
 
 const SAMPLE_README = `# Title\n\n<!-- TRACKLIST:START -->\n1. Keeper Track - Someone\n2. Old Track - Someone Else\n<!-- TRACKLIST:END -->\n`;
@@ -37,7 +38,7 @@ function makeFakeDeps(overrides = {}) {
     async cloneRepo(repoUrl, branch, destDir) {
       calls.push(["cloneRepo", repoUrl, branch, destDir]);
       await fsp.mkdir(destDir, { recursive: true });
-      await fsp.writeFile(path.join(destDir, "README.md"), SAMPLE_README);
+      await fsp.writeFile(path.join(destDir, PACKAGE_README_FILENAME), SAMPLE_README);
     },
     async addAndCommit(cwd, files, opts) {
       calls.push(["addAndCommit", cwd, files, opts]);
@@ -206,7 +207,7 @@ test("regenerates the README to include the promoted add and exclude the deleted
   const { deps } = makeFakeDeps({
     git: {
       async addAndCommit(cwd) {
-        committedReadme = await fsp.readFile(path.join(cwd, "README.md"), "utf8");
+        committedReadme = await fsp.readFile(path.join(cwd, PACKAGE_README_FILENAME), "utf8");
       },
     },
   });
@@ -384,7 +385,7 @@ test("dry run's README preview and build both reflect the queue accurately witho
   const { deps } = makeFakeDeps({
     git: {
       async addAndCommit(cwd) {
-        previewReadme = await fsp.readFile(path.join(cwd, "README.md"), "utf8");
+        previewReadme = await fsp.readFile(path.join(cwd, PACKAGE_README_FILENAME), "utf8");
       },
     },
     buildPackage: async ({ configPath, versionNumber }) => {
@@ -441,7 +442,7 @@ test("a legacy .ogg file left over in the git checkout's \"my mixtape/\" (predat
     git: {
       async cloneRepo(repoUrl, branch, destDir) {
         await fsp.mkdir(path.join(destDir, "my mixtape"), { recursive: true });
-        await fsp.writeFile(path.join(destDir, "README.md"), SAMPLE_README);
+        await fsp.writeFile(path.join(destDir, PACKAGE_README_FILENAME), SAMPLE_README);
         // Simulates a real clone of this repo: "my mixtape/" already has
         // .ogg files checked into git from before the R2 migration,
         // including one no longer live anywhere (the resurrection bug).
@@ -676,7 +677,7 @@ test("cleanup always removes the temp clone directory, even on failure", async (
       async cloneRepo(repoUrl, branch, destDir) {
         capturedCloneDir = destDir;
         await fsp.mkdir(destDir, { recursive: true });
-        await fsp.writeFile(path.join(destDir, "README.md"), SAMPLE_README);
+        await fsp.writeFile(path.join(destDir, PACKAGE_README_FILENAME), SAMPLE_README);
         throw new Error("clone-adjacent failure for the test");
       },
     },

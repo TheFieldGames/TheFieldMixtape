@@ -3,7 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
 
-import { regenerateReadme } from "./readme.js";
+import { PACKAGE_README_FILENAME, regenerateReadme } from "./readme.js";
 import { PENDING_PREFIX } from "./storage.js";
 import * as storageDefault from "./storage.js";
 import * as gitDefault from "./git.js";
@@ -37,10 +37,11 @@ export const DRY_RUN_TAG_PREFIX = "dryrun-";
 
 // Always clone from here, regardless of dryRun or config.branch (the PUSH
 // target). This is the one real, authoritative source of the current
-// README/thunderstore.toml/etc. `git clone --branch <name>` requires that
-// branch to already exist on the remote — config.branch may be a disposable
-// test branch that doesn't exist yet (that's the whole point of it), so
-// cloning from it directly would fail on first use.
+// THUNDERSTORE.md (the package readme)/thunderstore.toml/etc. `git clone
+// --branch <name>` requires that branch to already exist on the remote —
+// config.branch may be a disposable test branch that doesn't exist yet
+// (that's the whole point of it), so cloning from it directly would fail
+// on first use.
 export const SOURCE_BRANCH = "main";
 
 // Hard cap on total tracks in the mixtape. Checked twice: once early
@@ -266,7 +267,7 @@ export async function processPublish(input, config, deps = {}) {
         ...realTrackNames.filter((name) => !pendingDeleteFilenames.includes(`${name}.ogg`)),
         ...pendingAddFilenames.map(trackNameFromFilename),
       ];
-      const readmePath = path.join(cloneDir, "README.md");
+      const readmePath = path.join(cloneDir, PACKAGE_README_FILENAME);
       const readmeText = await fsp.readFile(readmePath, "utf8");
       await fsp.writeFile(readmePath, regenerateReadme(readmeText, trackNames));
 
@@ -280,7 +281,7 @@ export async function processPublish(input, config, deps = {}) {
       const commitMessage = dryRun
         ? `[DRY RUN] Publish: ${summary} (published by ${displayName} via contribute-app)`
         : `Publish: ${summary} (published by ${displayName} via contribute-app)`;
-      await git.addAndCommit(cloneDir, ["README.md"], { authorName: displayName, message: commitMessage });
+      await git.addAndCommit(cloneDir, [PACKAGE_README_FILENAME], { authorName: displayName, message: commitMessage });
 
       setStage("compute-version");
       const { versionNumber: v, tagName: realTagName } = await fetchNextVersion(repoUrl);

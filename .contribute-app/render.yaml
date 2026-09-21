@@ -12,7 +12,7 @@ services:
     dockerContext: .contribute-app
     # Without this, Auto-Deploy (which watches all of `main`) redeploys the
     # service on EVERY real submission, since processSubmission() itself
-    # pushes a commit (README.md) to main — killing the in-flight container
+    # pushes a commit (THUNDERSTORE.md) to main — killing the in-flight container
     # mid tcli-build/tcli-publish. Confirmed via Render's Events log: a
     # submission's own "Add track: ..." commit triggered "Deploy started"
     # seconds after the push, which tore down the container that was still

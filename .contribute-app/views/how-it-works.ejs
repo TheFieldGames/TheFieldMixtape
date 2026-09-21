@@ -17,7 +17,7 @@
     <p>Before this existed, contributing a track meant opening a pull request on GitHub: a real barrier for non-technical friends, and slow even for technical ones &mdash; a maintainer had to notice it, review it, and manually publish afterward. This app turns that into a login and a drag-and-drop.</p>
 
     <h2>What I built</h2>
-    <p>The whole product, end to end: the visual design (a cassette-tape&ndash;themed UI, mobile-friendly, the one you&rsquo;re looking at right now), the backend pipeline (audio conversion, cloud storage, packaging, publishing to a real public mod registry), and the guardrails that make it safe for multiple people to use casually at the same time. I designed it, built it, tested it (286 automated tests), deployed it, and I&rsquo;m the one who finds out informally when something breaks.</p>
+    <p>The whole product, end to end: the visual design (a cassette-tape&ndash;themed UI, mobile-friendly, the one you&rsquo;re looking at right now), the backend pipeline (audio conversion, cloud storage, packaging, publishing to a real public mod registry), and the guardrails that make it safe for multiple people to use casually at the same time. I designed it, built it, tested it (292 automated tests), deployed it, and I&rsquo;m the one who finds out informally when something breaks.</p>
 
     <h2>Judgment calls worth highlighting</h2>
     <ul class="ov-list">
@@ -66,7 +66,7 @@
 
     <h2>Testing &amp; operations</h2>
     <ul class="ov-list">
-      <li>286 automated tests via Node&rsquo;s built-in test runner &mdash; no test framework dependency.</li>
+      <li>292 automated tests via Node&rsquo;s built-in test runner &mdash; no test framework dependency.</li>
       <li>Plain timestamped stdout/stderr logging; Render captures container output automatically, so there&rsquo;s no logging library in the dependency tree.</li>
       <li>Real logins and publishes notify a Discord webhook &mdash; routed through a small, separately deployed Cloudflare Worker relay (its own runtime, its own secret) rather than posted to Discord directly, after the direct route turned out to be silently blocked by an edge firewall rule on the host&rsquo;s shared outbound IP.</li>
       <li>An isolated dry-run mode &mdash; a separate storage prefix, git branch, and tag prefix &mdash; lets the entire real pipeline run end to end (including from this very demo) without ever touching production data.</li>

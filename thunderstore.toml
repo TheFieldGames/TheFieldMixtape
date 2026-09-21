@@ -14,7 +14,7 @@ onlystar-sPEAKer = "2.3.6"
 
 [build]
 icon = "./icon.png"
-readme = "./README.md"
+readme = "./THUNDERSTORE.md"
 outdir = "./build"
 
 [[build.copy]]
