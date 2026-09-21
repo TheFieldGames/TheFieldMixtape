@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { regenerateReadme, sortTrackNames } from "../src/readme.js";
+import { PACKAGE_README_FILENAME, regenerateReadme, sortTrackNames } from "../src/readme.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REAL_README_PATH = path.join(__dirname, "..", "..", "README.md");
+// The real package readme at the repo root — deliberately NOT README.md,
+// which describes the contribute-app and has no tracklist in it.
+const REAL_README_PATH = path.join(__dirname, "..", "..", PACKAGE_README_FILENAME);
 
 function extractTrackNamesFromReadme(readmeText) {
   const match = readmeText.match(/<!-- TRACKLIST:START -->\n([\s\S]*?)\n<!-- TRACKLIST:END -->/);

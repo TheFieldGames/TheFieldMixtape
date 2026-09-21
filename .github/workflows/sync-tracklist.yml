@@ -20,7 +20,7 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
 
-      - name: Regenerate tracklist in README.md
+      - name: Regenerate tracklist in THUNDERSTORE.md
         run: |
           python3 - <<'PY'
           import os
@@ -33,7 +33,7 @@ jobs:
           )
           tracklist = "\n".join(f"{i}. {name}" for i, name in enumerate(files, 1))
 
-          with open("README.md", "r") as f:
+          with open("THUNDERSTORE.md", "r") as f:
               readme = f.read()
 
           new_block = f"<!-- TRACKLIST:START -->\n{tracklist}\n<!-- TRACKLIST:END -->"
@@ -44,14 +44,14 @@ jobs:
               flags=re.DOTALL,
           )
 
-          with open("README.md", "w") as f:
+          with open("THUNDERSTORE.md", "w") as f:
               f.write(readme)
           PY
 
       - name: Check whether tracklist changed
         id: check
         run: |
-          if git diff --quiet -- README.md; then
+          if git diff --quiet -- THUNDERSTORE.md; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -68,7 +68,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add README.md
+          git add THUNDERSTORE.md
           git commit -m "Auto-update tracklist"
           git push origin HEAD:${{ github.head_ref }}
 

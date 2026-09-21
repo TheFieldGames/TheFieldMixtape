@@ -16,8 +16,8 @@ export async function cloneRepo(repoUrl, branch, destDir, { runExecFile = execFi
  * Tolerates "nothing to commit" as a success case, not a failure — this
  * matters for retrying a "committed but not published" Publish. If an
  * earlier attempt at the exact same batch already got this far (committed
- * README.md, then failed later, e.g. at tcli-publish), a retry clones the
- * now-already-updated main, regenerates the identical README from the same
+ * THUNDERSTORE.md, then failed later, e.g. at tcli-publish), a retry clones
+ * the now-already-updated main, regenerates the identical readme from the same
  * unchanged track list, and has nothing new to stage. HEAD is already the
  * commit this attempt would have made, so that's exactly the right state to
  * tag/push/publish from — treating it as a hard failure (the old behavior)
